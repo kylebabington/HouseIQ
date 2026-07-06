@@ -13,7 +13,7 @@ import cors from "cors";
 import pg from "pg";
 
 // AI functions
-import { createEmbedding, vectorToSql } from "./ai.js";
+import { createEmbedding, vectorToSql, generateHouseAnswer } from "./ai.js";
 
 const { Pool } = pg;
 
@@ -311,21 +311,12 @@ Saved: ${memory.created_at}
             })
             .join("\n");
 
-        // For this step, we are still generating a simple answer manually.
-        // Next step, we will send this context to an AI model.
-        const answer = `
-I searched this home's long-term memory and found the most relevant notes.
-
-Relevant memories:
-
-${memoryContext || "No memories found yet."}
-
-Question:
-"${question}"
-
-Practical next step:
-Use these remembered details to make the recommendation. In the next step, I will turn this into a polished AI-generated answer instead of this raw context view.
-`;
+        // Generate a response from the AI
+        const answer =
+            await generateHouseAnswer(
+                question,
+                memories
+            );
 
         await pool.query(
             `
