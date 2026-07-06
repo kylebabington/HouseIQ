@@ -1,0 +1,276 @@
+/* frontend/src/index.css */
+
+:root {
+  font-family: "Trebuchet MS", system-ui, sans-serif;
+  color: #17231c;
+  background: #eef3ea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at top left, rgba(136, 174, 138, 0.35), transparent 30%),
+    linear-gradient(135deg, #eef3ea, #dfe8d8);
+}
+
+.hero {
+  max-width: 900px;
+  margin: 0 auto 2rem;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: #4e6f53;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(3rem, 8vw, 6rem);
+  line-height: 0.9;
+  color: #233826;
+}
+
+h2,
+h3 {
+  margin-top: 0;
+  color: #233826;
+}
+
+.hero-text {
+  max-width: 700px;
+  margin: 1rem auto 0;
+  font-size: 1.15rem;
+  color: #465c49;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1.25rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(61, 92, 66, 0.18);
+  border-radius: 24px;
+  padding: 1.25rem;
+  box-shadow: 0 24px 70px rgba(34, 56, 38, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.sidebar {
+  align-self: start;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border: 1px solid rgba(61, 92, 66, 0.25);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  background: #fbfdf9;
+  color: #17231c;
+  outline: none;
+}
+
+textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #648f69;
+  box-shadow: 0 0 0 4px rgba(100, 143, 105, 0.15);
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.85rem 1rem;
+  background: #2f5d3a;
+  color: white;
+  font-weight: 800;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  background: #244a2d;
+  box-shadow: 0 10px 24px rgba(47, 93, 58, 0.22);
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.home-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.home-card {
+  text-align: left;
+  background: #f8fbf5;
+  color: #233826;
+  border: 1px solid rgba(61, 92, 66, 0.16);
+  border-radius: 18px;
+}
+
+.home-card strong {
+  display: block;
+}
+
+.home-card span {
+  display: block;
+  margin-top: 0.25rem;
+  color: #667769;
+  font-size: 0.9rem;
+}
+
+.home-card.active {
+  background: #dcebd7;
+  border-color: #648f69;
+}
+
+.main-panel {
+  min-height: 650px;
+}
+
+.selected-home-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(61, 92, 66, 0.12);
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.memory-form,
+.ask-box {
+  background: #f8fbf5;
+  border: 1px solid rgba(61, 92, 66, 0.14);
+  border-radius: 20px;
+  padding: 1rem;
+}
+
+.answer-box {
+  white-space: pre-wrap;
+  background: #223826;
+  color: #eef8ea;
+  padding: 1rem;
+  border-radius: 18px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.timeline {
+  margin-top: 1.25rem;
+}
+
+.memory-card {
+  background: #ffffff;
+  border: 1px solid rgba(61, 92, 66, 0.13);
+  border-radius: 18px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.memory-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.memory-card-header span {
+  background: #edf5e9;
+  color: #446349;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.memory-card p {
+  color: #3f5143;
+  line-height: 1.6;
+}
+
+.memory-card small {
+  color: #758578;
+}
+
+.empty-state {
+  color: #667769;
+}
+
+.empty-state.large {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 500px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+@media (max-width: 950px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell {
+    padding: 1rem;
+  }
+}
