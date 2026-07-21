@@ -569,6 +569,170 @@ app.post("/api/homes/:homeId/memory-search", async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------
+// GET HOME ISSUES
+// ---------------------------------------------------------
+//
+// Returns all issues belonging to one home.
+//
+// The frontend uses this route to populate the Issues tab.
+//
+app.get("/api/homes/:homeId/issues", async (req, res) => {
+    try {
+        const { homeId } = req.params;
+
+        const result = await pool.query(
+            `
+            SELECT *
+            FROM home_issues
+            WHERE home_id = $1
+            ORDER BY
+                CASE priority
+                    WHEN 'urgent' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    WHEN 'low' THEN 4
+                    ELSE 5
+                END,
+                created_at DESC
+            `,
+            [homeId]
+        );
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error(
+            "Error fetching home issues:",
+            error
+        );
+
+        res.status(500).json({
+            error: "Failed to fetch home issues",
+            details: error.message,
+        });
+    }
+});
+
+// ---------------------------------------------------------
+// GET HOME PROJECTS
+// ---------------------------------------------------------
+//
+// Returns each project along with its project tasks.
+//
+// We retrieve the projects first, then retrieve all tasks
+// belonging to those projects.
+//
+app.get("/api/homes/:homeId/projects", async (req, res) => {
+    try {
+        const { homeId } = req.params;
+
+        // Get every project for this home.
+        const projectsResult = await pool.query(
+            `
+            SELECT *
+            FROM home_projects
+            WHERE home_id = $1
+            ORDER BY created_at DESC
+            `,
+            [homeId]
+        );
+
+        const projects = projectsResult.rows;
+
+        // If the home has no projects, return immediately.
+        //
+        // This also prevents us from building an invalid
+        // SQL query with an empty list of project IDs.
+        if (projects.length === 0) {
+            return res.json([]);
+        }
+
+        const projectIds = projects.map(
+            (project) => project.id
+        );
+
+        // Get all tasks belonging to any of these projects.
+        //
+        // ANY($1::UUID[]) means:
+        //
+        // "Return rows where project_id equals any UUID
+        // inside the supplied array."
+        const tasksResult = await pool.query(
+            `
+            SELECT *
+            FROM project_tasks
+            WHERE project_id = ANY($1::UUID[])
+            ORDER BY project_id, task_order ASC
+            `,
+            [projectIds]
+        );
+
+        const tasks = tasksResult.rows;
+
+        // Attach the correct tasks to each project.
+        const projectsWithTasks = projects.map(
+            (project) => {
+                return {
+                    ...project,
+
+                    tasks: tasks.filter(
+                        (task) =>
+                            task.project_id ===
+                            project.id
+                    ),
+                };
+            }
+        );
+
+        res.json(projectsWithTasks);
+    } catch (error) {
+        console.error(
+            "Error fetching home projects:",
+            error
+        );
+
+        res.status(500).json({
+            error: "Failed to fetch home projects",
+            details: error.message,
+        });
+    }
+});
+
+// ---------------------------------------------------------
+// GET HOME ASSETS
+// ---------------------------------------------------------
+//
+// Returns appliances, systems, tools, and equipment
+// connected to one home.
+//
+app.get("/api/homes/:homeId/assets", async (req, res) => {
+    try {
+        const { homeId } = req.params;
+
+        const result = await pool.query(
+            `
+            SELECT *
+            FROM home_assets
+            WHERE home_id = $1
+            ORDER BY created_at DESC
+            `,
+            [homeId]
+        );
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error(
+            "Error fetching home assets:",
+            error
+        );
+
+        res.status(500).json({
+            error: "Failed to fetch home assets",
+            details: error.message,
+        });
+    }
+});
+
 // Ask HouseIQ a question.
 // This is now the main agent endpoint.
 //
@@ -1082,83 +1246,6 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
         if (client) {
             client.release();
         }
-    }
-});
-
-app.get("/api/homes/:homeId/issues", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-
-        const result = await pool.query(
-            `
-            SELECT *
-            FROM home_issues
-            WHERE home_id = $1
-            ORDER BY created_at DESC
-            `,
-            [homeId]
-        );
-
-        res.json(result.rows);
-    } catch (error) {
-        console.error("Error fetching issues:", error);
-
-        res.status(500).json({
-            error: "Failed to fetch issues",
-            details: error.message,
-        });
-    }
-});
-
-
-app.get("/api/homes/:homeId/projects", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-
-        const result = await pool.query(
-            `
-            SELECT *
-            FROM home_projects
-            WHERE home_id = $1
-            ORDER BY created_at DESC
-            `,
-            [homeId]
-        );
-
-        res.json(result.rows);
-    } catch (error) {
-        console.error("Error fetching projects:", error);
-
-        res.status(500).json({
-            error: "Failed to fetch projects",
-            details: error.message,
-        });
-    }
-});
-
-
-app.get("/api/homes/:homeId/assets", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-
-        const result = await pool.query(
-            `
-            SELECT *
-            FROM home_assets
-            WHERE home_id = $1
-            ORDER BY created_at DESC
-            `,
-            [homeId]
-        );
-
-        res.json(result.rows);
-    } catch (error) {
-        console.error("Error fetching assets:", error);
-
-        res.status(500).json({
-            error: "Failed to fetch assets",
-            details: error.message,
-        });
     }
 });
 
