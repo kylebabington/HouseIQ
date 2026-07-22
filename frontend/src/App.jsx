@@ -88,6 +88,41 @@ function formatCurrency(value) {
   }).format(number);
 }
 
+/**
+ * Converts file bytes into a readable size.
+ *
+ * Examples:
+ *
+ * 850 becomes "850 B"
+ * 24576 becomes "24 KB"
+ * 2849012 becomes "2.7 MB"
+ */
+function formatFileSize(bytes) {
+  const number = Number(bytes);
+
+  if (
+    Number.isNaN(number) ||
+    number < 0
+  ) {
+    return "Unknown size";
+  }
+
+  if (number < 1024) {
+    return `${number} B`;
+  }
+
+  if (number < 1024 * 1024) {
+    return `${(
+      number / 1024
+    ).toFixed(1)} KB`;
+  }
+
+  return `${(
+    number /
+    (1024 * 1024)
+  ).toFixed(1)} MB`;
+}
+
 
 // ---------------------------------------------------------
 // MAIN APP COMPONENT
@@ -117,10 +152,25 @@ function App() {
   // DASHBOARD DATA
   // -----------------------------------------------------
 
+  // -----------------------------------------------------
+  // DASHBOARD DATA
+  // -----------------------------------------------------
+
+  // Problems that HouseIQ is tracking.
   const [issues, setIssues] = useState([]);
+
+  // Multi-step repair or maintenance plans.
   const [projects, setProjects] = useState([]);
+
+  // Appliances, systems, tools, and equipment.
   const [assets, setAssets] = useState([]);
+
+  // Permanent long-term facts about the home.
   const [memories, setMemories] = useState([]);
+
+  // Uploaded inspection reports, invoices, manuals,
+  // warranties, receipts, and other documents.
+  const [documents, setDocuments] = useState([]);
 
 
   // -----------------------------------------------------
@@ -168,6 +218,48 @@ function App() {
   const [askError, setAskError] =
     useState("");
 
+  // -----------------------------------------------------
+  // DOCUMENT UPLOAD STATE
+  // -----------------------------------------------------
+
+  // The actual File object selected in the browser.
+  //
+  // This is not the filename string.
+  // It is the browser's representation of the uploaded file.
+  const [
+    selectedDocumentFile,
+    setSelectedDocumentFile,
+  ] = useState(null);
+
+  // The category sent to the backend as documentType.
+  const [
+    selectedDocumentType,
+    setSelectedDocumentType,
+  ] = useState("inspection");
+
+  // True while the document is uploading and being analyzed.
+  const [
+    isUploadingDocument,
+    setIsUploadingDocument,
+  ] = useState(false);
+
+  // Stores a user-friendly upload error.
+  const [
+    documentUploadError,
+    setDocumentUploadError,
+  ] = useState("");
+
+  // Stores the complete response from the document upload route.
+  //
+  // This lets the UI show:
+  // - the document summary
+  // - what records were created
+  // - extracted metadata
+  const [
+    documentUploadResult,
+    setDocumentUploadResult,
+  ] = useState(null);
+
 
   // -----------------------------------------------------
   // MANUAL MEMORY TESTING STATE
@@ -199,13 +291,19 @@ function App() {
       return;
     }
 
-    // Clear the previous home's AI response.
+    // Clear conversation results from the previously selected home.
     setAgentResponse(null);
     setAskError("");
 
-    // Show the Issues tab first for every new home.
+    // Clear document upload results from the previous home.
+    setDocumentUploadResult(null);
+    setDocumentUploadError("");
+    setSelectedDocumentFile(null);
+
+    // Show the Issues tab first for every newly selected home.
     setActiveTab("issues");
 
+    // Load all records for the selected home.
     refreshHomeDashboard(selectedHome.id);
   }, [selectedHome]);
 
@@ -251,14 +349,24 @@ function App() {
       setIsLoadingDashboard(true);
       setDashboardError("");
 
-      // Promise.all sends all four requests at the same time.
+      // Promise.all runs all five requests at the same time.
       //
-      // This is faster than awaiting each request one by one.
+      // This is faster than:
+      //
+      // await issues
+      // await projects
+      // await assets
+      // await memories
+      // await documents
+      //
+      // because the browser does not wait for one request
+      // before starting the next.
       const [
         issuesResponse,
         projectsResponse,
         assetsResponse,
         memoriesResponse,
+        documentsResponse,
       ] = await Promise.all([
         axios.get(
           `${API_URL}/homes/${homeId}/issues`
@@ -275,12 +383,17 @@ function App() {
         axios.get(
           `${API_URL}/homes/${homeId}/memories`
         ),
+
+        axios.get(
+          `${API_URL}/homes/${homeId}/documents`
+        ),
       ]);
 
       setIssues(issuesResponse.data);
       setProjects(projectsResponse.data);
       setAssets(assetsResponse.data);
       setMemories(memoriesResponse.data);
+      setDocuments(documentsResponse.data);
     } catch (error) {
       console.error(
         "Error refreshing dashboard:",
@@ -288,6 +401,7 @@ function App() {
       );
 
       setDashboardError(
+        error.response?.data?.details ||
         error.response?.data?.error ||
         "Could not load the home dashboard."
       );
@@ -414,6 +528,141 @@ function App() {
       );
     } finally {
       setIsAsking(false);
+    }
+  }
+
+  // -----------------------------------------------------
+  // UPLOAD AND ANALYZE A DOCUMENT
+  // -----------------------------------------------------
+
+  async function uploadDocument(event) {
+    event.preventDefault();
+
+    // A document must belong to a home.
+    if (!selectedHome) {
+      alert(
+        "Create or select a home before uploading a document."
+      );
+
+      return;
+    }
+
+    // The user must choose a file first.
+    if (!selectedDocumentFile) {
+      setDocumentUploadError(
+        "Choose a PDF or text file before uploading."
+      );
+
+      return;
+    }
+
+    // The backend currently accepts only PDF and plain text.
+    const allowedMimeTypes = [
+      "application/pdf",
+      "text/plain",
+    ];
+
+    if (
+      !allowedMimeTypes.includes(
+        selectedDocumentFile.type
+      )
+    ) {
+      setDocumentUploadError(
+        "HouseIQ currently supports only PDF and plain-text files."
+      );
+
+      return;
+    }
+
+    // Match the backend's 10 MB limit.
+    const maximumFileSize =
+      10 * 1024 * 1024;
+
+    if (
+      selectedDocumentFile.size >
+      maximumFileSize
+    ) {
+      setDocumentUploadError(
+        "The selected file is larger than 10 MB."
+      );
+
+      return;
+    }
+
+    try {
+      setIsUploadingDocument(true);
+      setDocumentUploadError("");
+      setDocumentUploadResult(null);
+
+      // FormData is required for file uploads.
+      //
+      // Normal JSON cannot directly contain a browser File object.
+      const formData = new FormData();
+
+      // This field name must exactly match:
+      //
+      // upload.single("document")
+      //
+      // in backend/server.js.
+      formData.append(
+        "document",
+        selectedDocumentFile
+      );
+
+      // This becomes req.body.documentType on the backend.
+      formData.append(
+        "documentType",
+        selectedDocumentType
+      );
+
+      const response = await axios.post(
+        `${API_URL}/homes/${selectedHome.id}/documents/upload`,
+        formData
+      );
+
+      // Save the full backend response so the UI can display
+      // the summary, metadata, and actions taken.
+      setDocumentUploadResult(
+        response.data
+      );
+
+      // Clear the selected file after success.
+      setSelectedDocumentFile(null);
+
+      // Reset the physical file input.
+      //
+      // React state clearing does not always clear the visible
+      // filename inside an <input type="file">.
+      const fileInput =
+        document.getElementById(
+          "houseiq-document-input"
+        );
+
+      if (fileInput) {
+        fileInput.value = "";
+      }
+
+      // The document analysis may have created records in
+      // multiple dashboard categories.
+      await refreshHomeDashboard(
+        selectedHome.id
+      );
+
+      // Show the user the new document immediately.
+      setActiveTab("documents");
+    } catch (error) {
+      console.error(
+        "Document upload failed:",
+        error
+      );
+
+      setDocumentUploadError(
+        error.response?.data?.details ||
+        error.response?.data?.error ||
+        "HouseIQ could not process the document."
+      );
+    } finally {
+      setIsUploadingDocument(false);
     }
   }
 
@@ -903,6 +1152,146 @@ function App() {
     );
   }
 
+  // -----------------------------------------------------
+  // RENDER DOCUMENT CARDS
+  // -----------------------------------------------------
+
+  function renderDocuments() {
+    if (documents.length === 0) {
+      return (
+        <div className="empty-state dashboard-empty">
+          <h4>
+            No documents uploaded
+          </h4>
+
+          <p>
+            Upload an inspection report,
+            invoice, receipt, warranty, or
+            equipment manual to begin
+            building the home's document
+            history.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="record-grid">
+        {documents.map((documentRecord) => {
+          const metadata =
+            documentRecord.metadata || {};
+
+          return (
+            <article
+              key={documentRecord.id}
+              className="record-card document-card"
+            >
+              <div className="record-card-header">
+                <div>
+                  <span className="record-type">
+                    {formatLabel(
+                      documentRecord.document_type
+                    )}
+                  </span>
+
+                  <h4>
+                    {documentRecord.file_name ||
+                      "Untitled document"}
+                  </h4>
+                </div>
+
+                <span className="document-icon">
+                  DOC
+                </span>
+              </div>
+
+              {documentRecord.summary ? (
+                <p className="record-description">
+                  {documentRecord.summary}
+                </p>
+              ) : (
+                <p className="empty-state">
+                  No summary is available.
+                </p>
+              )}
+
+              <div className="document-details">
+                {metadata.documentDate && (
+                  <div>
+                    <span>
+                      Document date
+                    </span>
+
+                    <strong>
+                      {
+                        metadata.documentDate
+                      }
+                    </strong>
+                  </div>
+                )}
+
+                {metadata
+                  .contractorOrCompany && (
+                    <div>
+                      <span>
+                        Company
+                      </span>
+
+                      <strong>
+                        {
+                          metadata
+                            .contractorOrCompany
+                        }
+                      </strong>
+                    </div>
+                  )}
+
+                {Number(
+                  metadata.totalAmount
+                ) > 0 && (
+                    <div>
+                      <span>
+                        Total amount
+                      </span>
+
+                      <strong>
+                        {formatCurrency(
+                          metadata.totalAmount
+                        )}
+                      </strong>
+                    </div>
+                  )}
+
+                {metadata.fileSize && (
+                  <div>
+                    <span>
+                      File size
+                    </span>
+
+                    <strong>
+                      {formatFileSize(
+                        metadata.fileSize
+                      )}
+                    </strong>
+                  </div>
+                )}
+              </div>
+
+              <div className="record-footer">
+                <small>
+                  Uploaded{" "}
+                  {formatDate(
+                    documentRecord.created_at
+                  )}
+                </small>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+  }
+
 
   // -----------------------------------------------------
   // CHOOSE WHICH TAB CONTENT TO DISPLAY
@@ -918,6 +1307,9 @@ function App() {
 
       case "memories":
         return renderMemories();
+
+      case "documents":
+        return renderDocuments();
 
       case "issues":
       default:
@@ -1279,6 +1671,315 @@ function App() {
                 )}
               </section>
 
+              {/* -------------------------------- */}
+              {/* DOCUMENT UPLOAD                   */}
+              {/* -------------------------------- */}
+
+              <section className="document-upload-section">
+                <div className="section-heading">
+                  <div>
+                    <p className="eyebrow">
+                      Build home memory automatically
+                    </p>
+
+                    <h3>
+                      Upload a home document
+                    </h3>
+
+                    <p className="section-description">
+                      Upload an inspection report,
+                      invoice, receipt, warranty, or
+                      manual. HouseIQ will extract the
+                      useful facts and update the home
+                      record.
+                    </p>
+                  </div>
+
+                  <span className="document-support-badge">
+                    PDF or TXT
+                  </span>
+                </div>
+
+                <form
+                  onSubmit={uploadDocument}
+                  className="document-upload-form"
+                >
+                  <div className="document-form-fields">
+                    <label className="form-field">
+                      <span>Document type</span>
+
+                      <select
+                        value={selectedDocumentType}
+                        onChange={(event) =>
+                          setSelectedDocumentType(
+                            event.target.value
+                          )
+                        }
+                        disabled={isUploadingDocument}
+                      >
+                        <option value="inspection">
+                          Inspection report
+                        </option>
+
+                        <option value="invoice">
+                          Repair invoice
+                        </option>
+
+                        <option value="receipt">
+                          Receipt
+                        </option>
+
+                        <option value="warranty">
+                          Warranty
+                        </option>
+
+                        <option value="manual">
+                          Appliance or equipment manual
+                        </option>
+
+                        <option value="estimate">
+                          Contractor estimate
+                        </option>
+
+                        <option value="insurance">
+                          Insurance document
+                        </option>
+
+                        <option value="general">
+                          Other document
+                        </option>
+                      </select>
+                    </label>
+
+                    <label className="form-field file-field">
+                      <span>Select file</span>
+
+                      <input
+                        id="houseiq-document-input"
+                        type="file"
+                        accept=".pdf,.txt,application/pdf,text/plain"
+                        onChange={(event) => {
+                          const file =
+                            event.target.files?.[0] ||
+                            null;
+
+                          setSelectedDocumentFile(file);
+                          setDocumentUploadError("");
+                          setDocumentUploadResult(null);
+                        }}
+                        disabled={isUploadingDocument}
+                      />
+                    </label>
+                  </div>
+
+                  {selectedDocumentFile && (
+                    <div className="selected-file-preview">
+                      <div>
+                        <strong>
+                          {selectedDocumentFile.name}
+                        </strong>
+
+                        <span>
+                          {formatFileSize(
+                            selectedDocumentFile.size
+                          )}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={isUploadingDocument}
+                        onClick={() => {
+                          setSelectedDocumentFile(null);
+
+                          const fileInput =
+                            document.getElementById(
+                              "houseiq-document-input"
+                            );
+
+                          if (fileInput) {
+                            fileInput.value = "";
+                          }
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      isUploadingDocument ||
+                      !selectedDocumentFile
+                    }
+                  >
+                    {isUploadingDocument
+                      ? "Uploading and analyzing..."
+                      : "Upload to HouseIQ"}
+                  </button>
+                </form>
+
+                {isUploadingDocument && (
+                  <div className="document-processing-state">
+                    <strong>
+                      HouseIQ is reading the document
+                    </strong>
+
+                    <p>
+                      Extracting text, creating a
+                      summary, and checking for home
+                      memories, issues, projects, and
+                      assets.
+                    </p>
+                  </div>
+                )}
+
+                {documentUploadError && (
+                  <div className="error-message">
+                    <strong>
+                      Document upload failed
+                    </strong>
+
+                    <p>{documentUploadError}</p>
+                  </div>
+                )}
+
+                {documentUploadResult && (
+                  <div className="document-upload-result">
+                    <div className="document-result-header">
+                      <div>
+                        <p className="eyebrow">
+                          Analysis complete
+                        </p>
+
+                        <h4>
+                          {
+                            documentUploadResult
+                              .document?.fileName
+                          }
+                        </h4>
+                      </div>
+
+                      <span className="success-badge">
+                        Saved
+                      </span>
+                    </div>
+
+                    <div className="document-summary-box">
+                      <strong>
+                        HouseIQ summary
+                      </strong>
+
+                      <p>
+                        {
+                          documentUploadResult
+                            .document?.summary
+                        }
+                      </p>
+                    </div>
+
+                    {documentUploadResult
+                      .document?.metadata && (
+                        <div className="document-metadata-grid">
+                          {documentUploadResult.document
+                            .metadata.documentDate && (
+                              <div>
+                                <span>
+                                  Document date
+                                </span>
+
+                                <strong>
+                                  {
+                                    documentUploadResult
+                                      .document.metadata
+                                      .documentDate
+                                  }
+                                </strong>
+                              </div>
+                            )}
+
+                          {documentUploadResult.document
+                            .metadata
+                            .contractorOrCompany && (
+                              <div>
+                                <span>
+                                  Company
+                                </span>
+
+                                <strong>
+                                  {
+                                    documentUploadResult
+                                      .document.metadata
+                                      .contractorOrCompany
+                                  }
+                                </strong>
+                              </div>
+                            )}
+
+                          {Number(
+                            documentUploadResult.document
+                              .metadata.totalAmount
+                          ) > 0 && (
+                              <div>
+                                <span>Total amount</span>
+
+                                <strong>
+                                  {formatCurrency(
+                                    documentUploadResult
+                                      .document.metadata
+                                      .totalAmount
+                                  )}
+                                </strong>
+                              </div>
+                            )}
+                        </div>
+                      )}
+
+                    <div className="actions-section">
+                      <h4>
+                        What HouseIQ updated
+                      </h4>
+
+                      {documentUploadResult
+                        .actionsTaken?.length > 0 ? (
+                        <div className="action-list">
+                          {documentUploadResult.actionsTaken.map(
+                            (action, index) => (
+                              <div
+                                key={`${action.recordId}-${index}`}
+                                className="action-item"
+                              >
+                                <span className="action-icon">
+                                  ✓
+                                </span>
+
+                                <div>
+                                  <strong>
+                                    {formatLabel(
+                                      action.type
+                                    )}
+                                  </strong>
+
+                                  <p>{action.title}</p>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <p className="empty-state">
+                          The document was saved, but
+                          HouseIQ did not create any
+                          additional records.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+
 
               {/* -------------------------------- */}
               {/* HOME RECORD DASHBOARD            */}
@@ -1302,50 +2003,42 @@ function App() {
                 <div className="dashboard-summary">
                   <div>
                     <strong>
-                      {
-                        issues.length
-                      }
+                      {issues.length}
                     </strong>
 
-                    <span>
-                      Issues
-                    </span>
+                    <span>Issues</span>
                   </div>
 
                   <div>
                     <strong>
-                      {
-                        projects.length
-                      }
+                      {projects.length}
                     </strong>
 
-                    <span>
-                      Projects
-                    </span>
+                    <span>Projects</span>
                   </div>
 
                   <div>
                     <strong>
-                      {
-                        assets.length
-                      }
+                      {assets.length}
                     </strong>
 
-                    <span>
-                      Assets
-                    </span>
+                    <span>Assets</span>
                   </div>
 
                   <div>
                     <strong>
-                      {
-                        memories.length
-                      }
+                      {memories.length}
                     </strong>
 
-                    <span>
-                      Memories
-                    </span>
+                    <span>Memories</span>
+                  </div>
+
+                  <div>
+                    <strong>
+                      {documents.length}
+                    </strong>
+
+                    <span>Documents</span>
                   </div>
                 </div>
 
@@ -1438,6 +2131,24 @@ function App() {
                       {
                         memories.length
                       }
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={
+                      activeTab === "documents"
+                        ? "tab-button active"
+                        : "tab-button"
+                    }
+                    onClick={() =>
+                      setActiveTab("documents")
+                    }
+                  >
+                    Documents
+
+                    <span>
+                      {documents.length}
                     </span>
                   </button>
                 </nav>

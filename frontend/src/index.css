@@ -592,8 +592,9 @@ button:disabled {
 
 .dashboard-summary {
   display: grid;
+
   grid-template-columns:
-    repeat(4, minmax(0, 1fr));
+    repeat(5, minmax(0, 1fr));
 
   gap: 0.75rem;
 
@@ -1047,6 +1048,316 @@ button:disabled {
   font-weight: 700;
 }
 
+/* --------------------------------------------------------- */
+/* DOCUMENT UPLOAD SECTION                                   */
+/* --------------------------------------------------------- */
+
+.document-upload-section {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+
+  background:
+    linear-gradient(145deg,
+      #f7f8f2,
+      #edf3e8);
+
+  border:
+    1px solid var(--border);
+
+  border-radius: 22px;
+}
+
+.section-description {
+  max-width: 700px;
+  margin-bottom: 0;
+
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.document-support-badge {
+  white-space: nowrap;
+
+  padding: 0.42rem 0.75rem;
+
+  border-radius: 999px;
+
+  background: #e3e9f4;
+  color: #42536f;
+
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+
+/* --------------------------------------------------------- */
+/* DOCUMENT UPLOAD FORM                                      */
+/* --------------------------------------------------------- */
+
+.document-upload-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.document-form-fields {
+  display: grid;
+
+  grid-template-columns:
+    minmax(180px, 0.65fr) minmax(260px, 1.35fr);
+
+  gap: 0.85rem;
+}
+
+.form-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.form-field>span {
+  color: #4c6051;
+
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.file-field input[type="file"] {
+  min-height: 50px;
+  padding: 0.65rem;
+}
+
+.file-field input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+
+  border: 0;
+  border-radius: 999px;
+
+  padding: 0.55rem 0.8rem;
+
+  background: #dcebd7;
+  color: #294d32;
+
+  font: inherit;
+  font-weight: 800;
+
+  cursor: pointer;
+}
+
+
+/* --------------------------------------------------------- */
+/* SELECTED FILE                                             */
+/* --------------------------------------------------------- */
+
+.selected-file-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+
+  padding: 0.85rem 1rem;
+
+  background: white;
+
+  border:
+    1px solid var(--border);
+
+  border-radius: 15px;
+}
+
+.selected-file-preview div {
+  display: grid;
+  gap: 0.2rem;
+
+  min-width: 0;
+}
+
+.selected-file-preview strong {
+  overflow-wrap: anywhere;
+
+  color: var(--forest-dark);
+}
+
+.selected-file-preview span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.text-button {
+  flex: 0 0 auto;
+
+  padding: 0.5rem 0.75rem;
+
+  background: transparent;
+  color: #8a332a;
+
+  box-shadow: none;
+}
+
+.text-button:hover {
+  background: #fff0ed;
+  color: #70291f;
+
+  box-shadow: none;
+}
+
+
+/* --------------------------------------------------------- */
+/* DOCUMENT PROCESSING                                       */
+/* --------------------------------------------------------- */
+
+.document-processing-state {
+  margin-top: 1rem;
+  padding: 1rem;
+
+  background: #eef3fb;
+
+  border:
+    1px solid rgba(69, 95, 139, 0.18);
+
+  border-radius: 16px;
+
+  color: #394f73;
+}
+
+.document-processing-state p {
+  margin: 0.35rem 0 0;
+  line-height: 1.5;
+}
+
+
+/* --------------------------------------------------------- */
+/* DOCUMENT UPLOAD RESULT                                    */
+/* --------------------------------------------------------- */
+
+.document-upload-result {
+  margin-top: 1rem;
+  padding: 1rem;
+
+  background: white;
+
+  border:
+    1px solid rgba(54, 103, 65, 0.2);
+
+  border-radius: 18px;
+}
+
+.document-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.document-result-header h4 {
+  margin-bottom: 0;
+}
+
+.success-badge {
+  white-space: nowrap;
+
+  padding: 0.35rem 0.7rem;
+
+  background: #d7ead5;
+  color: #285932;
+
+  border-radius: 999px;
+
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.document-summary-box {
+  margin-top: 1rem;
+  padding: 1rem;
+
+  background: #f5f8f3;
+  border-radius: 14px;
+}
+
+.document-summary-box strong {
+  color: var(--forest-dark);
+}
+
+.document-summary-box p {
+  margin: 0.4rem 0 0;
+
+  color: #405047;
+  line-height: 1.6;
+}
+
+
+/* --------------------------------------------------------- */
+/* DOCUMENT METADATA                                         */
+/* --------------------------------------------------------- */
+
+.document-metadata-grid,
+.document-details {
+  display: grid;
+
+  grid-template-columns:
+    repeat(auto-fit,
+      minmax(140px, 1fr));
+
+  gap: 0.65rem;
+
+  margin-top: 0.85rem;
+}
+
+.document-metadata-grid div,
+.document-details div {
+  display: grid;
+  gap: 0.2rem;
+
+  min-width: 0;
+
+  padding: 0.75rem;
+
+  background: #f6f9f4;
+  border-radius: 12px;
+}
+
+.document-metadata-grid span,
+.document-details span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.document-metadata-grid strong,
+.document-details strong {
+  overflow-wrap: anywhere;
+
+  color: var(--forest-dark);
+  font-size: 0.88rem;
+}
+
+
+/* --------------------------------------------------------- */
+/* DOCUMENT CARDS                                            */
+/* --------------------------------------------------------- */
+
+.document-card {
+  border-left:
+    4px solid #7386a8;
+}
+
+.document-icon {
+  display: grid;
+  place-items: center;
+
+  width: 42px;
+  height: 42px;
+
+  flex: 0 0 auto;
+
+  border-radius: 12px;
+
+  background: #e7ebf4;
+  color: #435574;
+
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
 
 /* --------------------------------------------------------- */
 /* RESPONSIVE DESIGN                                         */
@@ -1085,6 +1396,10 @@ button:disabled {
 
   .confidence-badge {
     align-self: flex-start;
+  }
+
+  .document-form-fields {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1125,5 +1440,15 @@ button:disabled {
   .project-stats,
   .asset-details {
     grid-template-columns: 1fr;
+  }
+
+  .document-result-header,
+  .selected-file-preview {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .text-button {
+    align-self: flex-start;
   }
 }

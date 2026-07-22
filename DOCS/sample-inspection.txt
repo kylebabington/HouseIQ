@@ -1,0 +1,34 @@
+HOME INSPECTION SUMMARY
+
+Property: 1978 Ranch
+Inspection Date: July 18, 2026
+Inspector: Sample Home Inspection Company
+
+ROOF
+
+The asphalt shingle roof is approximately 14 years old.
+No active roof leak was visible during the inspection.
+Several shingles on the west slope show curling and granule loss.
+Recommend evaluation by a qualified roofing contractor within 12 months.
+
+ELECTRICAL
+
+One outlet in the west bedroom was loose in the wall.
+The outlet remained powered during testing.
+Recommend repair by a qualified electrician.
+
+WATER HEATER
+
+Manufacturer: Rheem
+Model: XE40M06ST45U1
+Serial Number: RH20214568
+Location: Basement utility room
+
+The water heater was operational during inspection.
+The manufacture date appears to be 2021.
+
+BASEMENT
+
+Minor moisture staining was visible on the north basement wall.
+No standing water was present.
+The homeowner should monitor this area after heavy rain.
