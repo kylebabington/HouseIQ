@@ -1358,6 +1358,51 @@ button:disabled {
   letter-spacing: 0.06em;
 }
 
+/* --------------------------------------------------------- */
+/* ORIGINAL DOCUMENT BUTTON                                  */
+/* --------------------------------------------------------- */
+
+.document-card-footer {
+  align-items: center;
+}
+
+.document-open-button {
+  flex: 0 0 auto;
+
+  padding: 0.5rem 0.8rem;
+
+  background: #e7ebf4;
+  color: #435574;
+
+  border:
+    1px solid rgba(67, 85, 116, 0.16);
+
+  box-shadow: none;
+
+  font-size: 0.78rem;
+}
+
+.document-open-button:hover {
+  background: #dce3ef;
+  color: #30435f;
+
+  box-shadow: none;
+}
+
+.original-unavailable {
+  color: #8a716c;
+
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .document-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 
 /* --------------------------------------------------------- */
 /* RESPONSIVE DESIGN                                         */

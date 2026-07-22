@@ -666,6 +666,55 @@ function App() {
     }
   }
 
+  // -----------------------------------------------------
+  // OPEN THE ORIGINAL PRIVATE DOCUMENT
+  // -----------------------------------------------------
+
+  async function openOriginalDocument(
+    documentRecord
+  ) {
+    if (!documentRecord?.id) {
+      return;
+    }
+
+    try {
+      const response = await axios.get(
+        `${API_URL}/documents/${documentRecord.id}/download-url`
+      );
+
+      const signedUrl =
+        response.data.url;
+
+      if (!signedUrl) {
+        throw new Error(
+          "The server did not return a document URL."
+        );
+      }
+
+      // Open the temporary S3 URL in a new browser tab.
+      //
+      // "noopener,noreferrer" prevents the opened page from
+      // receiving access to the original browser window.
+      window.open(
+        signedUrl,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    } catch (error) {
+      console.error(
+        "Could not open original document:",
+        error
+      );
+
+      alert(
+        error.response?.data?.details ||
+        error.response?.data?.error ||
+        error.message ||
+        "The original document could not be opened."
+      );
+    }
+  }
+
 
   // -----------------------------------------------------
   // CREATE A MANUAL MEMORY
@@ -1277,13 +1326,31 @@ function App() {
                 )}
               </div>
 
-              <div className="record-footer">
+              <div className="record-footer document-card-footer">
                 <small>
                   Uploaded{" "}
                   {formatDate(
                     documentRecord.created_at
                   )}
                 </small>
+
+                {documentRecord.metadata?.s3Key ? (
+                  <button
+                    type="button"
+                    className="document-open-button"
+                    onClick={() =>
+                      openOriginalDocument(
+                        documentRecord
+                      )
+                    }
+                  >
+                    Open original
+                  </button>
+                ) : (
+                  <span className="original-unavailable">
+                    Original unavailable
+                  </span>
+                )}
               </div>
             </article>
           );

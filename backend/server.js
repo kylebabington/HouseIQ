@@ -20,6 +20,8 @@ import multer from "multer";
 // when loaded via ESM (module.parent is unset), which crashes without test PDFs.
 import pdf from "pdf-parse/lib/pdf-parse.js";
 
+import { createDocumentDownloadUrl, deleteDocumentFromS3, uploadDocumentToS3 } from "./s3.js";
+
 // AI functions
 import { createEmbedding, vectorToSql, generateHouseAgentResponse, analyzeHomeDocument } from "./ai.js";
 
@@ -890,14 +892,284 @@ app.get(
 );
 
 // ---------------------------------------------------------
-// UPLOAD AND ANALYZE A HOME DOCUMENT
+// CREATE A TEMPORARY DOCUMENT DOWNLOAD URL
+// ---------------------------------------------------------
+//
+// The original file remains private in S3.
+//
+// This route creates a temporary URL that allows the browser
+// to open one specific document for five minutes.
+//
+app.get(
+    "/api/documents/:documentId/download-url",
+
+    async (req, res) => {
+        try {
+            const { documentId } =
+                req.params;
+
+
+            // -------------------------------------------------
+            // 1. FIND THE DOCUMENT
+            // -------------------------------------------------
+
+            const documentResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        home_id,
+                        file_name,
+                        source_url,
+                        metadata
+                    FROM documents
+                    WHERE id = $1
+                    `,
+                    [documentId]
+                );
+
+            if (
+                documentResult.rows.length === 0
+            ) {
+                return res.status(404).json({
+                    error:
+                        "Document not found",
+                });
+            }
+
+            const document =
+                documentResult.rows[0];
+
+            const metadata =
+                document.metadata || {};
+
+
+            // -------------------------------------------------
+            // 2. GET THE S3 OBJECT KEY
+            // -------------------------------------------------
+
+            const s3Key =
+                metadata.s3Key;
+
+            if (!s3Key) {
+                return res.status(409).json({
+                    error:
+                        "The original file is not available",
+
+                    details:
+                        "This document was created before S3 storage was enabled.",
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 3. ASK AWS FOR A FIVE-MINUTE URL
+            // -------------------------------------------------
+
+            const signedDownload =
+                await createDocumentDownloadUrl({
+                    key:
+                        s3Key,
+
+                    originalFileName:
+                        document.file_name,
+
+                    expiresInSeconds:
+                        300,
+                });
+
+
+            // -------------------------------------------------
+            // 4. RETURN THE TEMPORARY URL
+            // -------------------------------------------------
+
+            return res.json({
+                documentId:
+                    document.id,
+
+                fileName:
+                    document.file_name,
+
+                url:
+                    signedDownload.url,
+
+                expiresInSeconds:
+                    signedDownload
+                        .expiresInSeconds,
+            });
+        } catch (error) {
+            console.error(
+                "Could not create document download URL:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Could not open the original document",
+
+                details:
+                    error.message,
+            });
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// DELETE A DOCUMENT AND ITS ORIGINAL S3 OBJECT
 // ---------------------------------------------------------
 
+app.delete(
+    "/api/documents/:documentId",
+
+    async (req, res) => {
+        const { documentId } =
+            req.params;
+
+        let client;
+
+        try {
+            // -------------------------------------------------
+            // 1. FIND THE DOCUMENT
+            // -------------------------------------------------
+
+            const documentResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        home_id,
+                        file_name,
+                        metadata
+                    FROM documents
+                    WHERE id = $1
+                    `,
+                    [documentId]
+                );
+
+            if (
+                documentResult.rows.length === 0
+            ) {
+                return res.status(404).json({
+                    error:
+                        "Document not found",
+                });
+            }
+
+            const document =
+                documentResult.rows[0];
+
+            const s3Key =
+                document.metadata?.s3Key ||
+                null;
+
+
+            // -------------------------------------------------
+            // 2. DELETE THE ORIGINAL FILE FROM S3
+            // -------------------------------------------------
+            //
+            // Older documents might not have an S3 key.
+            //
+            if (s3Key) {
+                await deleteDocumentFromS3({
+                    key:
+                        s3Key,
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 3. DELETE THE DATABASE RECORD
+            // -------------------------------------------------
+
+            client =
+                await pool.connect();
+
+            await client.query(
+                "BEGIN"
+            );
+
+            await client.query(
+                `
+                DELETE FROM documents
+                WHERE id = $1
+                `,
+                [documentId]
+            );
+
+            await client.query(
+                "COMMIT"
+            );
+
+
+            // -------------------------------------------------
+            // 4. RETURN SUCCESS
+            // -------------------------------------------------
+
+            return res.json({
+                message:
+                    "Document deleted successfully",
+
+                documentId:
+                    document.id,
+
+                fileName:
+                    document.file_name,
+            });
+        } catch (error) {
+            if (client) {
+                try {
+                    await client.query(
+                        "ROLLBACK"
+                    );
+                } catch (rollbackError) {
+                    console.error(
+                        "Document deletion rollback failed:",
+                        rollbackError
+                    );
+                }
+            }
+
+            console.error(
+                "Document deletion failed:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Document could not be deleted",
+
+                details:
+                    error.message,
+            });
+        } finally {
+            if (client) {
+                client.release();
+            }
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// UPLOAD, STORE, AND ANALYZE A HOME DOCUMENT
+// ---------------------------------------------------------
+//
+// This route now performs the complete document workflow:
+//
+// 1. Receive the file with Multer.
+// 2. Confirm the home exists.
+// 3. Extract text from the PDF or text file.
+// 4. Analyze the text with HouseIQ.
+// 5. Upload the original file to private Amazon S3.
+// 6. Save the document and AI-created records in CockroachDB.
+// 7. Clean up the S3 file if database processing fails.
+//
 app.post(
     "/api/homes/:homeId/documents/upload",
 
-    // "document" must match the FormData field name
-    // used by the frontend.
+    // This field name must match the browser FormData field:
+    //
+    // formData.append("document", selectedFile)
+    //
     upload.single("document"),
 
     async (req, res) => {
@@ -907,44 +1179,65 @@ app.post(
             req.body.documentType?.trim() ||
             "general";
 
+        // This will hold a dedicated CockroachDB connection
+        // after the transaction begins.
         let client;
+
+        // S3 cannot participate in a CockroachDB transaction.
+        //
+        // We save the upload result here so that we can delete
+        // the S3 object if later database work fails.
+        let uploadedS3Object = null;
 
         try {
             // -------------------------------------------------
-            // 1. VALIDATE THE FILE
+            // 1. VALIDATE THE UPLOADED FILE
             // -------------------------------------------------
 
             if (!req.file) {
                 return res.status(400).json({
-                    error: "A document file is required",
+                    error:
+                        "A document file is required",
                 });
             }
 
 
             // -------------------------------------------------
-            // 2. CONFIRM THE HOME EXISTS
+            // 2. CONFIRM THAT THE HOME EXISTS
             // -------------------------------------------------
 
-            const homeResult = await pool.query(
-                `
-                SELECT id, name
-                FROM homes
-                WHERE id = $1
-                `,
-                [homeId]
-            );
+            const homeResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        name
+                    FROM homes
+                    WHERE id = $1
+                    `,
+                    [homeId]
+                );
 
-            if (homeResult.rows.length === 0) {
+            if (
+                homeResult.rows.length === 0
+            ) {
                 return res.status(404).json({
-                    error: "Home not found",
+                    error:
+                        "Home not found",
                 });
             }
 
 
             // -------------------------------------------------
-            // 3. EXTRACT TEXT FROM THE FILE
+            // 3. EXTRACT READABLE TEXT
             // -------------------------------------------------
-
+            //
+            // We do this before uploading to S3.
+            //
+            // If this is a scanned PDF with no readable text,
+            // the request fails before we permanently store a file
+            // that HouseIQ cannot currently process.
+            //
             const extractedText =
                 await extractTextFromUploadedFile(
                     req.file
@@ -952,7 +1245,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 4. ASK AI TO ANALYZE THE DOCUMENT
+            // 4. ANALYZE THE DOCUMENT WITH HOUSEIQ
             // -------------------------------------------------
 
             const analysis =
@@ -967,16 +1260,40 @@ app.post(
 
 
             // -------------------------------------------------
-            // 5. START A DATABASE TRANSACTION
+            // 5. UPLOAD THE ORIGINAL FILE TO AMAZON S3
             // -------------------------------------------------
 
-            client = await pool.connect();
+            uploadedS3Object =
+                await uploadDocumentToS3({
+                    homeId,
 
-            await client.query("BEGIN");
+                    originalFileName:
+                        req.file.originalname,
+
+                    mimeType:
+                        req.file.mimetype,
+
+                    // Multer memory storage places the raw file
+                    // bytes inside req.file.buffer.
+                    buffer:
+                        req.file.buffer,
+                });
 
 
             // -------------------------------------------------
-            // 6. SAVE THE DOCUMENT RECORD
+            // 6. BEGIN THE COCKROACHDB TRANSACTION
+            // -------------------------------------------------
+
+            client =
+                await pool.connect();
+
+            await client.query(
+                "BEGIN"
+            );
+
+
+            // -------------------------------------------------
+            // 7. SAVE THE DOCUMENT RECORD
             // -------------------------------------------------
 
             const documentResult =
@@ -1004,19 +1321,36 @@ app.post(
                     `,
                     [
                         homeId,
+
                         documentType,
+
+                        // Store the original filename for display.
                         req.file.originalname,
 
-                        // The file is not permanently stored yet,
-                        // so there is no real URL.
-                        null,
+                        // This is a durable internal S3 reference.
+                        //
+                        // It is not a public browser URL.
+                        uploadedS3Object.s3Uri,
 
                         extractedText,
+
                         analysis.summary,
 
                         JSON.stringify({
                             source:
                                 "document_upload",
+
+                            storageProvider:
+                                "aws_s3",
+
+                            s3Bucket:
+                                uploadedS3Object.bucket,
+
+                            s3Key:
+                                uploadedS3Object.key,
+
+                            s3Etag:
+                                uploadedS3Object.etag,
 
                             mimeType:
                                 req.file.mimetype,
@@ -1041,7 +1375,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 7. PREPARE CREATED RECORDS AND ACTION LOG
+            // 8. PREPARE RESPONSE COLLECTIONS
             // -------------------------------------------------
 
             const createdRecords = {
@@ -1053,8 +1387,12 @@ app.post(
 
             const actionsTaken = [
                 {
-                    type: "document_created",
-                    recordId: document.id,
+                    type:
+                        "document_created",
+
+                    recordId:
+                        document.id,
+
                     title:
                         document.file_name ||
                         "Uploaded document",
@@ -1063,7 +1401,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 8. CREATE MEMORIES
+            // 9. CREATE MEMORIES FOUND IN THE DOCUMENT
             // -------------------------------------------------
 
             for (
@@ -1095,6 +1433,11 @@ app.post(
 
                             fileName:
                                 req.file.originalname,
+
+                            // This links the memory back to the
+                            // original S3 object.
+                            s3Key:
+                                uploadedS3Object.key,
                         },
 
                         client,
@@ -1105,15 +1448,20 @@ app.post(
                 );
 
                 actionsTaken.push({
-                    type: "memory_created",
-                    recordId: memory.id,
-                    title: memory.title,
+                    type:
+                        "memory_created",
+
+                    recordId:
+                        memory.id,
+
+                    title:
+                        memory.title,
                 });
             }
 
 
             // -------------------------------------------------
-            // 9. CREATE ISSUES
+            // 10. CREATE ISSUES FOUND IN THE DOCUMENT
             // -------------------------------------------------
 
             for (
@@ -1145,18 +1493,25 @@ app.post(
                         client,
                     });
 
-                createdRecords.issues.push(issue);
+                createdRecords.issues.push(
+                    issue
+                );
 
                 actionsTaken.push({
-                    type: "issue_created",
-                    recordId: issue.id,
-                    title: issue.title,
+                    type:
+                        "issue_created",
+
+                    recordId:
+                        issue.id,
+
+                    title:
+                        issue.title,
                 });
             }
 
 
             // -------------------------------------------------
-            // 10. CREATE PROJECTS
+            // 11. CREATE PROJECTS AND TASKS
             // -------------------------------------------------
 
             for (
@@ -1203,9 +1558,15 @@ app.post(
                 );
 
                 actionsTaken.push({
-                    type: "project_created",
-                    recordId: project.id,
-                    title: project.title,
+                    type:
+                        "project_created",
+
+                    recordId:
+                        project.id,
+
+                    title:
+                        project.title,
+
                     taskCount:
                         project.tasks.length,
                 });
@@ -1213,7 +1574,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 11. CREATE ASSETS
+            // 12. CREATE ASSETS FOUND IN THE DOCUMENT
             // -------------------------------------------------
 
             for (
@@ -1248,33 +1609,43 @@ app.post(
                         client,
                     });
 
-                createdRecords.assets.push(asset);
+                createdRecords.assets.push(
+                    asset
+                );
 
                 actionsTaken.push({
-                    type: "asset_created",
-                    recordId: asset.id,
-                    title: asset.name,
+                    type:
+                        "asset_created",
+
+                    recordId:
+                        asset.id,
+
+                    title:
+                        asset.name,
                 });
             }
 
 
             // -------------------------------------------------
-            // 12. COMMIT EVERYTHING
+            // 13. COMMIT THE DATABASE TRANSACTION
             // -------------------------------------------------
 
-            await client.query("COMMIT");
+            await client.query(
+                "COMMIT"
+            );
 
 
             // -------------------------------------------------
-            // 13. RETURN THE RESULT
+            // 14. RETURN THE SUCCESS RESPONSE
             // -------------------------------------------------
 
             return res.status(201).json({
                 message:
-                    "Document uploaded and analyzed successfully",
+                    "Document stored and analyzed successfully",
 
                 document: {
-                    id: document.id,
+                    id:
+                        document.id,
 
                     homeId:
                         document.home_id,
@@ -1287,6 +1658,12 @@ app.post(
 
                     summary:
                         document.summary,
+
+                    // This is the internal S3 URI.
+                    //
+                    // The frontend does not open this directly.
+                    sourceUrl:
+                        document.source_url,
 
                     metadata:
                         document.metadata,
@@ -1302,6 +1679,10 @@ app.post(
                 createdRecords,
             });
         } catch (error) {
+            // -------------------------------------------------
+            // 15. ROLL BACK COCKROACHDB
+            // -------------------------------------------------
+
             if (client) {
                 try {
                     await client.query(
@@ -1309,38 +1690,77 @@ app.post(
                     );
                 } catch (rollbackError) {
                     console.error(
-                        "Document transaction rollback failed:",
+                        "Document database rollback failed:",
                         rollbackError
                     );
                 }
             }
+
+
+            // -------------------------------------------------
+            // 16. CLEAN UP AN ORPHANED S3 FILE
+            // -------------------------------------------------
+            //
+            // Imagine this sequence:
+            //
+            // 1. S3 upload succeeds.
+            // 2. Database insert fails.
+            //
+            // Without this cleanup, the S3 bucket would contain a
+            // file that no database record knows about.
+            //
+            if (
+                uploadedS3Object?.key
+            ) {
+                try {
+                    await deleteDocumentFromS3({
+                        key:
+                            uploadedS3Object.key,
+                    });
+                } catch (s3CleanupError) {
+                    console.error(
+                        "Failed to remove orphaned S3 object:",
+                        s3CleanupError
+                    );
+                }
+            }
+
 
             console.error(
                 "Document upload failed:",
                 error
             );
 
-            const statusCode =
-                error.message.includes(
-                    "Only PDF"
-                ) ||
-                    error.message.includes(
-                        "file is empty"
-                    ) ||
-                    error.message.includes(
-                        "No readable text"
-                    )
-                    ? 400
-                    : 500;
+            const clientErrorMessages = [
+                "Only PDF",
+                "file is empty",
+                "No readable text",
+                "larger than",
+            ];
 
-            return res.status(statusCode).json({
-                error:
-                    "Document could not be processed",
+            const isClientError =
+                clientErrorMessages.some(
+                    (message) =>
+                        error.message.includes(
+                            message
+                        )
+                );
 
-                details:
-                    error.message,
-            });
+            return res
+                .status(
+                    isClientError
+                        ? 400
+                        : 500
+                )
+                .json({
+                    error:
+                        "Document could not be processed",
+
+                    details:
+                        error.message,
+                });
         } finally {
+            // Return the connection to the database pool.
             if (client) {
                 client.release();
             }
