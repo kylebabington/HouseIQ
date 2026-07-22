@@ -1,7 +1,18 @@
 // frontend/src/App.jsx
 
-import { useEffect, useState } from "react";
-import axios from "axios";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useAuth0,
+} from "@auth0/auth0-react";
+
+import api, {
+  setAccessTokenProvider,
+} from "./api.js";
+
 import "./index.css";
 
 
@@ -11,7 +22,9 @@ import "./index.css";
 //
 // Your Express backend runs locally on port 5000.
 //
-const API_URL = "http://localhost:5000/api";
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:5000/api";
 
 
 // ---------------------------------------------------------
@@ -129,6 +142,56 @@ function formatFileSize(bytes) {
 // ---------------------------------------------------------
 
 function App() {
+  // -----------------------------------------------------
+  // AUTH0 STATE
+  // -----------------------------------------------------
+
+  const {
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    error: authError,
+    user,
+    loginWithRedirect,
+    logout,
+    getAccessTokenSilently,
+  } = useAuth0();
+
+
+  // -----------------------------------------------------
+  // CONNECT AUTH0 TO THE AXIOS CLIENT
+  // -----------------------------------------------------
+  //
+  // The shared API client calls this provider before every
+  // backend request.
+  //
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setAccessTokenProvider(null);
+      return;
+    }
+
+    setAccessTokenProvider(
+      async () => {
+        return getAccessTokenSilently({
+          authorizationParams: {
+            audience:
+              import.meta.env
+                .VITE_AUTH0_AUDIENCE,
+
+            scope:
+              "openid profile email",
+          },
+        });
+      }
+    );
+
+    return () => {
+      setAccessTokenProvider(null);
+    };
+  }, [
+    isAuthenticated,
+    getAccessTokenSilently,
+  ]);
   // -----------------------------------------------------
   // HOME STATE
   // -----------------------------------------------------
@@ -277,10 +340,81 @@ function App() {
   // LOAD HOMES ON FIRST RENDER
   // -----------------------------------------------------
 
+  // -----------------------------------------------------
+  // CONNECT AUTH0 TO THE SHARED API CLIENT
+  // -----------------------------------------------------
+  //
+  // This effect runs whenever the user's authentication
+  // state changes.
+  //
+  // When the user is logged in, we give api.js access to
+  // Auth0's getAccessTokenSilently() function.
+  //
+  // api.js will call that function before every request.
+  //
   useEffect(() => {
-    fetchHomes();
-  }, []);
+    // A logged-out user has no access-token provider.
+    if (!isAuthenticated) {
+      setAccessTokenProvider(null);
+      return;
+    }
 
+    // Give the shared Axios client a function that can
+    // retrieve a valid access token when needed.
+    setAccessTokenProvider(
+      async () => {
+        const token =
+          await getAccessTokenSilently({
+            authorizationParams: {
+              // This must exactly match the Identifier
+              // of the HouseIQ API in Auth0.
+              audience:
+                import.meta.env
+                  .VITE_AUTH0_AUDIENCE,
+            },
+          });
+
+        return token;
+      }
+    );
+
+    // Remove the provider when this effect is cleaned up,
+    // such as when the user logs out.
+    return () => {
+      setAccessTokenProvider(null);
+    };
+  }, [
+    isAuthenticated,
+    getAccessTokenSilently,
+  ]);
+
+
+  // -----------------------------------------------------
+  // LOAD HOMES AFTER AUTHENTICATION
+  // -----------------------------------------------------
+  //
+  // This effect is declared after the token-provider effect.
+  //
+  // React runs effects in declaration order, so the shared
+  // API client receives its token provider before this effect
+  // calls fetchHomes().
+  //
+  useEffect(() => {
+    // Auth0 is still checking whether a session exists.
+    if (isAuthLoading) {
+      return;
+    }
+
+    // Never request private home data for a logged-out user.
+    if (!isAuthenticated) {
+      return;
+    }
+
+    fetchHomes();
+  }, [
+    isAuthLoading,
+    isAuthenticated,
+  ]);
 
   // -----------------------------------------------------
   // REFRESH DASHBOARD WHEN HOME CHANGES
@@ -314,7 +448,7 @@ function App() {
 
   async function fetchHomes() {
     try {
-      const response = await axios.get(
+      const response = await api.get(
         `${API_URL}/homes`
       );
 
@@ -368,23 +502,23 @@ function App() {
         memoriesResponse,
         documentsResponse,
       ] = await Promise.all([
-        axios.get(
+        api.get(
           `${API_URL}/homes/${homeId}/issues`
         ),
 
-        axios.get(
+        api.get(
           `${API_URL}/homes/${homeId}/projects`
         ),
 
-        axios.get(
+        api.get(
           `${API_URL}/homes/${homeId}/assets`
         ),
 
-        axios.get(
+        api.get(
           `${API_URL}/homes/${homeId}/memories`
         ),
 
-        axios.get(
+        api.get(
           `${API_URL}/homes/${homeId}/documents`
         ),
       ]);
@@ -424,7 +558,7 @@ function App() {
     }
 
     try {
-      const response = await axios.post(
+      const response = await api.post(
         `${API_URL}/homes`,
         {
           name: homeForm.name.trim(),
@@ -495,7 +629,7 @@ function App() {
       setAskError("");
       setAgentResponse(null);
 
-      const response = await axios.post(
+      const response = await api.post(
         `${API_URL}/homes/${selectedHome.id}/ask`,
         {
           question: question.trim(),
@@ -615,7 +749,7 @@ function App() {
         selectedDocumentType
       );
 
-      const response = await axios.post(
+      const response = await api.post(
         `${API_URL}/homes/${selectedHome.id}/documents/upload`,
         formData
       );
@@ -678,7 +812,7 @@ function App() {
     }
 
     try {
-      const response = await axios.get(
+      const response = await api.get(
         `${API_URL}/documents/${documentRecord.id}/download-url`
       );
 
@@ -738,7 +872,7 @@ function App() {
     }
 
     try {
-      await axios.post(
+      await api.post(
         `${API_URL}/homes/${selectedHome.id}/memories`,
         {
           title:
@@ -1384,6 +1518,119 @@ function App() {
     }
   }
 
+  // -----------------------------------------------------
+  // AUTHENTICATION LOADING SCREEN
+  // -----------------------------------------------------
+
+  if (isAuthLoading) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <p className="eyebrow">
+            HouseIQ
+          </p>
+
+          <h1>
+            Checking your session
+          </h1>
+
+          <p>
+            HouseIQ is confirming whether
+            you are signed in.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+
+  // -----------------------------------------------------
+  // AUTHENTICATION ERROR SCREEN
+  // -----------------------------------------------------
+
+  if (authError) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <p className="eyebrow">
+            Authentication error
+          </p>
+
+          <h1>
+            HouseIQ could not sign you in
+          </h1>
+
+          <p className="error-message">
+            {authError.message}
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              loginWithRedirect()
+            }
+          >
+            Try again
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+
+  // -----------------------------------------------------
+  // LOGGED-OUT SCREEN
+  // -----------------------------------------------------
+
+  if (!isAuthenticated) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <p className="eyebrow">
+            Agentic home memory
+          </p>
+
+          <h1>
+            HouseIQ
+          </h1>
+
+          <p className="auth-introduction">
+            Your private home record,
+            repair history, documents,
+            equipment, and maintenance
+            intelligence in one place.
+          </p>
+
+          <div className="auth-actions">
+            <button
+              type="button"
+              onClick={() =>
+                loginWithRedirect()
+              }
+            >
+              Log in
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() =>
+                loginWithRedirect({
+                  authorizationParams: {
+                    screen_hint:
+                      "signup",
+                  },
+                })
+              }
+            >
+              Create account
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
 
   // -----------------------------------------------------
   // PAGE
@@ -1392,16 +1639,58 @@ function App() {
   return (
     <main className="app-shell">
       <section className="hero">
-        <p className="eyebrow">
-          Agentic home memory
-        </p>
+        <div className="hero-copy">
+          <p className="eyebrow">
+            Agentic home memory
+          </p>
 
-        <h1>HouseIQ</h1>
+          <h1>HouseIQ</h1>
 
-        <p className="hero-text">
-          Your home remembers everything.
-          HouseIQ makes sure you do too.
-        </p>
+          <p className="hero-text">
+            Your home remembers everything.
+            HouseIQ makes sure you do too.
+          </p>
+        </div>
+
+        <div className="user-menu">
+          {user?.picture && (
+            <img
+              src={user.picture}
+              alt=""
+              className="user-avatar"
+              referrerPolicy="no-referrer"
+            />
+          )}
+
+          <div className="user-details">
+            <strong>
+              {user?.name ||
+                user?.nickname ||
+                "HouseIQ user"}
+            </strong>
+
+            {user?.email && (
+              <span>
+                {user.email}
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() =>
+              logout({
+                logoutParams: {
+                  returnTo:
+                    window.location.origin,
+                },
+              })
+            }
+          >
+            Log out
+          </button>
+        </div>
       </section>
 
       <section className="layout">

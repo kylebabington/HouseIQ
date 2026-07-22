@@ -95,9 +95,17 @@ p {
 /* --------------------------------------------------------- */
 
 .hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
   max-width: 900px;
   margin: 0 auto 2rem;
   text-align: center;
+}
+
+.hero-copy {
+  min-width: 0;
 }
 
 .eyebrow {
@@ -1400,6 +1408,22 @@ button:disabled {
   .document-card-footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 700px) {
+  .hero {
+    flex-direction: column;
+  }
+
+  .user-menu {
+    width: 100%;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .user-details {
+    flex: 1;
   }
 }
 

@@ -25,11 +25,43 @@ import { createDocumentDownloadUrl, deleteDocumentFromS3, uploadDocumentToS3 } f
 // AI functions
 import { createEmbedding, vectorToSql, generateHouseAgentResponse, analyzeHomeDocument } from "./ai.js";
 
+import {
+    UnauthorizedError,
+} from "express-oauth2-jwt-bearer";
+
+import {
+    getAuthenticatedUserId,
+    requireAuth,
+} from "./auth.js";
+
 const { Pool } = pg;
 
 const app = express();
 
-app.use(cors());
+app.use(
+    cors({
+        // Only allow requests from the HouseIQ frontend.
+        origin:
+            process.env.FRONTEND_URL ||
+            "http://localhost:5173",
+
+        // These are the HTTP methods currently used by HouseIQ.
+        methods: [
+            "GET",
+            "POST",
+            "PATCH",
+            "DELETE",
+            "OPTIONS",
+        ],
+
+        // Authenticated API calls require Authorization.
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization",
+        ],
+    })
+);
+
 app.use(express.json());
 
 // ---------------------------------------------------------
@@ -478,14 +510,85 @@ async function createAssetRecord({
 }
 
 
-// Simple health check route
+// ---------------------------------------------------------
+// SIMPLE HEALTH CHECK
+// ---------------------------------------------------------
+//
+// This route is public.
+//
+// It lets us confirm that the Express server is running
+// without requiring an Auth0 access token.
+//
 app.get("/", (req, res) => {
     res.json({
-        message: "HouseIQ backend is running",
+        message:
+            "HouseIQ backend is running",
     });
 });
 
-// Test database connection
+
+// ---------------------------------------------------------
+// CURRENT AUTHENTICATED USER
+// ---------------------------------------------------------
+//
+// This route is protected by Auth0.
+//
+// The request must contain:
+//
+// Authorization: Bearer ACCESS_TOKEN
+//
+// If the token is missing or invalid, requireAuth returns
+// a 401 response before the route handler runs.
+//
+app.get(
+    "/api/auth/me",
+
+    // Auth0 validates the access token before continuing.
+    requireAuth,
+
+    (req, res) => {
+        // Auth0 places the logged-in user's stable ID
+        // inside the token's `sub` claim.
+        //
+        // getAuthenticatedUserId() reads that claim.
+        const auth0UserId =
+            getAuthenticatedUserId(
+                req
+            );
+
+        return res.json({
+            authenticated:
+                true,
+
+            auth0UserId,
+
+            // Email and name may not be included in an
+            // API access token. Null is acceptable here.
+            email:
+                req.auth.payload.email ||
+                null,
+
+            name:
+                req.auth.payload.name ||
+                null,
+
+            // Returning all claims is useful for this
+            // temporary authentication test.
+            //
+            // We can remove this later.
+            claims:
+                req.auth.payload,
+        });
+    }
+);
+
+
+// ---------------------------------------------------------
+// TEST DATABASE CONNECTION
+// ---------------------------------------------------------
+//
+// This route is still public for now.
+//
 app.get("/api/db-test", async (req, res) => {
     try {
         const result = await pool.query("SELECT now() AS current_time;");
@@ -2314,6 +2417,27 @@ app.use((error, req, res, next) => {
 
             details:
                 error.message,
+        });
+    }
+
+    // Auth0 middleware throws UnauthorizedError (and subclasses)
+    // when the Bearer token is missing or invalid.
+    if (error instanceof UnauthorizedError) {
+        if (error.headers) {
+            res.set(error.headers);
+        }
+
+        return res.status(
+            error.status ||
+            error.statusCode ||
+            401
+        ).json({
+            error:
+                "Authentication required",
+
+            details:
+                error.message ||
+                "Missing or invalid access token",
         });
     }
 
