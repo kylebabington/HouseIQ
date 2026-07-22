@@ -12,8 +12,16 @@ import cors from "cors";
 // pg lets Node connect to PostgreSQL-compatible databases like CockroachDB
 import pg from "pg";
 
+// Multer handles uploaded files sent as multipart/form-data.
+import multer from "multer";
+
+// pdf-parse extracts text from normal text-based PDF files.
+// Import the lib entry directly — the package root runs a debug harness
+// when loaded via ESM (module.parent is unset), which crashes without test PDFs.
+import pdf from "pdf-parse/lib/pdf-parse.js";
+
 // AI functions
-import { createEmbedding, vectorToSql, generateHouseAgentResponse } from "./ai.js";
+import { createEmbedding, vectorToSql, generateHouseAgentResponse, analyzeHomeDocument } from "./ai.js";
 
 const { Pool } = pg;
 
@@ -21,6 +29,46 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// ---------------------------------------------------------
+// FILE UPLOAD CONFIGURATION
+// ---------------------------------------------------------
+
+// memoryStorage keeps the uploaded file in RAM temporarily.
+//
+// That means:
+// - no temporary files are written to your computer
+// - req.file.buffer contains the file bytes
+// - the file disappears when the request finishes
+//
+// This is appropriate for the MVP, but not permanent storage.
+const uploadStorage = multer.memoryStorage();
+
+const upload = multer({
+    storage: uploadStorage,
+
+    limits: {
+        // Reject files larger than 10 MB.
+        fileSize: 10 * 1024 * 1024,
+    },
+
+    fileFilter: (req, file, callback) => {
+        const allowedMimeTypes = [
+            "application/pdf",
+            "text/plain",
+        ];
+
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+            return callback(
+                new Error(
+                    "Only PDF and plain-text files are currently supported"
+                )
+            );
+        }
+
+        callback(null, true);
+    },
+});
 
 // Create one reusable database connection pool
 const pool = new Pool({
@@ -35,6 +83,59 @@ const pool = new Pool({
 // DATABASE RECORD HELPERS
 // ---------------------------------------------------------
 
+// ---------------------------------------------------------
+// DOCUMENT TEXT EXTRACTION
+// ---------------------------------------------------------
+
+/**
+ * Extracts readable text from an uploaded PDF or text file.
+ *
+ * Supported MIME types:
+ *
+ * - application/pdf
+ * - text/plain
+ */
+async function extractTextFromUploadedFile(file) {
+    if (!file) {
+        throw new Error("An uploaded file is required");
+    }
+
+    if (!file.buffer) {
+        throw new Error(
+            "The uploaded file does not contain readable file data"
+        );
+    }
+
+    if (file.mimetype === "text/plain") {
+        const text = file.buffer.toString("utf-8").trim();
+
+        if (!text) {
+            throw new Error(
+                "The uploaded text file is empty"
+            );
+        }
+
+        return text;
+    }
+
+    if (file.mimetype === "application/pdf") {
+        const parsedPdf = await pdf(file.buffer);
+
+        const text = parsedPdf.text?.trim();
+
+        if (!text) {
+            throw new Error(
+                "No readable text could be extracted from this PDF. It may be a scanned image PDF."
+            );
+        }
+
+        return text;
+    }
+
+    throw new Error(
+        `Unsupported file type: ${file.mimetype}`
+    );
+}
 /**
  * Creates a permanent memory and its vector embedding.
  *
@@ -744,6 +845,509 @@ app.get("/api/homes/:homeId/assets", async (req, res) => {
 // - create projects
 // - create assets
 
+// ---------------------------------------------------------
+// GET DOCUMENTS FOR A HOME
+// ---------------------------------------------------------
+
+app.get(
+    "/api/homes/:homeId/documents",
+    async (req, res) => {
+        try {
+            const { homeId } = req.params;
+
+            const result = await pool.query(
+                `
+                SELECT
+                    id,
+                    home_id,
+                    document_type,
+                    file_name,
+                    source_url,
+                    summary,
+                    metadata,
+                    created_at,
+                    updated_at
+                FROM documents
+                WHERE home_id = $1
+                ORDER BY created_at DESC
+                `,
+                [homeId]
+            );
+
+            res.json(result.rows);
+        } catch (error) {
+            console.error(
+                "Error fetching documents:",
+                error
+            );
+
+            res.status(500).json({
+                error: "Failed to fetch documents",
+                details: error.message,
+            });
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// UPLOAD AND ANALYZE A HOME DOCUMENT
+// ---------------------------------------------------------
+
+app.post(
+    "/api/homes/:homeId/documents/upload",
+
+    // "document" must match the FormData field name
+    // used by the frontend.
+    upload.single("document"),
+
+    async (req, res) => {
+        const { homeId } = req.params;
+
+        const documentType =
+            req.body.documentType?.trim() ||
+            "general";
+
+        let client;
+
+        try {
+            // -------------------------------------------------
+            // 1. VALIDATE THE FILE
+            // -------------------------------------------------
+
+            if (!req.file) {
+                return res.status(400).json({
+                    error: "A document file is required",
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 2. CONFIRM THE HOME EXISTS
+            // -------------------------------------------------
+
+            const homeResult = await pool.query(
+                `
+                SELECT id, name
+                FROM homes
+                WHERE id = $1
+                `,
+                [homeId]
+            );
+
+            if (homeResult.rows.length === 0) {
+                return res.status(404).json({
+                    error: "Home not found",
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 3. EXTRACT TEXT FROM THE FILE
+            // -------------------------------------------------
+
+            const extractedText =
+                await extractTextFromUploadedFile(
+                    req.file
+                );
+
+
+            // -------------------------------------------------
+            // 4. ASK AI TO ANALYZE THE DOCUMENT
+            // -------------------------------------------------
+
+            const analysis =
+                await analyzeHomeDocument({
+                    fileName:
+                        req.file.originalname,
+
+                    documentType,
+
+                    extractedText,
+                });
+
+
+            // -------------------------------------------------
+            // 5. START A DATABASE TRANSACTION
+            // -------------------------------------------------
+
+            client = await pool.connect();
+
+            await client.query("BEGIN");
+
+
+            // -------------------------------------------------
+            // 6. SAVE THE DOCUMENT RECORD
+            // -------------------------------------------------
+
+            const documentResult =
+                await client.query(
+                    `
+                    INSERT INTO documents (
+                        home_id,
+                        document_type,
+                        file_name,
+                        source_url,
+                        extracted_text,
+                        summary,
+                        metadata
+                    )
+                    VALUES (
+                        $1,
+                        $2,
+                        $3,
+                        $4,
+                        $5,
+                        $6,
+                        $7::JSONB
+                    )
+                    RETURNING *
+                    `,
+                    [
+                        homeId,
+                        documentType,
+                        req.file.originalname,
+
+                        // The file is not permanently stored yet,
+                        // so there is no real URL.
+                        null,
+
+                        extractedText,
+                        analysis.summary,
+
+                        JSON.stringify({
+                            source:
+                                "document_upload",
+
+                            mimeType:
+                                req.file.mimetype,
+
+                            fileSize:
+                                req.file.size,
+
+                            documentDate:
+                                analysis.documentDate,
+
+                            contractorOrCompany:
+                                analysis.contractorOrCompany,
+
+                            totalAmount:
+                                analysis.totalAmount,
+                        }),
+                    ]
+                );
+
+            const document =
+                documentResult.rows[0];
+
+
+            // -------------------------------------------------
+            // 7. PREPARE CREATED RECORDS AND ACTION LOG
+            // -------------------------------------------------
+
+            const createdRecords = {
+                memories: [],
+                issues: [],
+                projects: [],
+                assets: [],
+            };
+
+            const actionsTaken = [
+                {
+                    type: "document_created",
+                    recordId: document.id,
+                    title:
+                        document.file_name ||
+                        "Uploaded document",
+                },
+            ];
+
+
+            // -------------------------------------------------
+            // 8. CREATE MEMORIES
+            // -------------------------------------------------
+
+            for (
+                const memoryInput of
+                analysis.memoriesToCreate
+            ) {
+                const memory =
+                    await createMemoryRecord({
+                        homeId,
+
+                        title:
+                            memoryInput.title,
+
+                        category:
+                            memoryInput.category,
+
+                        content:
+                            memoryInput.content,
+
+                        importance:
+                            memoryInput.importance,
+
+                        metadata: {
+                            source:
+                                "document_analysis",
+
+                            documentId:
+                                document.id,
+
+                            fileName:
+                                req.file.originalname,
+                        },
+
+                        client,
+                    });
+
+                createdRecords.memories.push(
+                    memory
+                );
+
+                actionsTaken.push({
+                    type: "memory_created",
+                    recordId: memory.id,
+                    title: memory.title,
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 9. CREATE ISSUES
+            // -------------------------------------------------
+
+            for (
+                const issueInput of
+                analysis.issuesToCreate
+            ) {
+                const issue =
+                    await createIssueRecord({
+                        homeId,
+
+                        title:
+                            issueInput.title,
+
+                        description:
+                            issueInput.description,
+
+                        priority:
+                            issueInput.priority,
+
+                        category:
+                            issueInput.category,
+
+                        suspectedCause:
+                            issueInput.suspectedCause,
+
+                        recommendedNextStep:
+                            issueInput.recommendedNextStep,
+
+                        client,
+                    });
+
+                createdRecords.issues.push(issue);
+
+                actionsTaken.push({
+                    type: "issue_created",
+                    recordId: issue.id,
+                    title: issue.title,
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 10. CREATE PROJECTS
+            // -------------------------------------------------
+
+            for (
+                const projectInput of
+                analysis.projectsToCreate
+            ) {
+                const project =
+                    await createProjectRecord({
+                        homeId,
+
+                        title:
+                            projectInput.title,
+
+                        description:
+                            projectInput.description,
+
+                        priority:
+                            projectInput.priority,
+
+                        estimatedCostLow:
+                            projectInput
+                                .estimatedCostLow,
+
+                        estimatedCostHigh:
+                            projectInput
+                                .estimatedCostHigh,
+
+                        diyDifficulty:
+                            projectInput
+                                .diyDifficulty,
+
+                        safetyNotes:
+                            projectInput
+                                .safetyNotes,
+
+                        tasks:
+                            projectInput.tasks,
+
+                        client,
+                    });
+
+                createdRecords.projects.push(
+                    project
+                );
+
+                actionsTaken.push({
+                    type: "project_created",
+                    recordId: project.id,
+                    title: project.title,
+                    taskCount:
+                        project.tasks.length,
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 11. CREATE ASSETS
+            // -------------------------------------------------
+
+            for (
+                const assetInput of
+                analysis.assetsToCreate
+            ) {
+                const asset =
+                    await createAssetRecord({
+                        homeId,
+
+                        assetType:
+                            assetInput.assetType,
+
+                        name:
+                            assetInput.name,
+
+                        brand:
+                            assetInput.brand,
+
+                        model:
+                            assetInput.model,
+
+                        serialNumber:
+                            assetInput.serialNumber,
+
+                        location:
+                            assetInput.location,
+
+                        notes:
+                            assetInput.notes,
+
+                        client,
+                    });
+
+                createdRecords.assets.push(asset);
+
+                actionsTaken.push({
+                    type: "asset_created",
+                    recordId: asset.id,
+                    title: asset.name,
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 12. COMMIT EVERYTHING
+            // -------------------------------------------------
+
+            await client.query("COMMIT");
+
+
+            // -------------------------------------------------
+            // 13. RETURN THE RESULT
+            // -------------------------------------------------
+
+            return res.status(201).json({
+                message:
+                    "Document uploaded and analyzed successfully",
+
+                document: {
+                    id: document.id,
+
+                    homeId:
+                        document.home_id,
+
+                    documentType:
+                        document.document_type,
+
+                    fileName:
+                        document.file_name,
+
+                    summary:
+                        document.summary,
+
+                    metadata:
+                        document.metadata,
+
+                    createdAt:
+                        document.created_at,
+                },
+
+                analysis,
+
+                actionsTaken,
+
+                createdRecords,
+            });
+        } catch (error) {
+            if (client) {
+                try {
+                    await client.query(
+                        "ROLLBACK"
+                    );
+                } catch (rollbackError) {
+                    console.error(
+                        "Document transaction rollback failed:",
+                        rollbackError
+                    );
+                }
+            }
+
+            console.error(
+                "Document upload failed:",
+                error
+            );
+
+            const statusCode =
+                error.message.includes(
+                    "Only PDF"
+                ) ||
+                    error.message.includes(
+                        "file is empty"
+                    ) ||
+                    error.message.includes(
+                        "No readable text"
+                    )
+                    ? 400
+                    : 500;
+
+            return res.status(statusCode).json({
+                error:
+                    "Document could not be processed",
+
+                details:
+                    error.message,
+            });
+        } finally {
+            if (client) {
+                client.release();
+            }
+        }
+    }
+);
+
 
 // ---------------------------------------------------------
 // HOUSEIQ AGENT ENDPOINT
@@ -1247,6 +1851,61 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
             client.release();
         }
     }
+});
+
+// ---------------------------------------------------------
+// GLOBAL ERROR HANDLER
+// ---------------------------------------------------------
+//
+// Express sends errors from Multer and other middleware here.
+//
+app.use((error, req, res, next) => {
+    if (error instanceof multer.MulterError) {
+        if (
+            error.code ===
+            "LIMIT_FILE_SIZE"
+        ) {
+            return res.status(400).json({
+                error:
+                    "The uploaded file is too large",
+
+                details:
+                    "The maximum supported file size is 10 MB.",
+            });
+        }
+
+        return res.status(400).json({
+            error:
+                "The file upload could not be processed",
+
+            details:
+                error.message,
+        });
+    }
+
+    if (
+        error?.message?.includes(
+            "Only PDF and plain-text"
+        )
+    ) {
+        return res.status(400).json({
+            error:
+                "Unsupported document type",
+
+            details:
+                error.message,
+        });
+    }
+
+    console.error(
+        "Unhandled server error:",
+        error
+    );
+
+    return res.status(500).json({
+        error:
+            "An unexpected server error occurred",
+    });
 });
 
 const PORT = process.env.PORT || 5000;
