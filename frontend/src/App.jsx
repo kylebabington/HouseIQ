@@ -15,18 +15,6 @@ import api, {
 
 import "./index.css";
 
-
-// ---------------------------------------------------------
-// API CONFIGURATION
-// ---------------------------------------------------------
-//
-// Your Express backend runs locally on port 5000.
-//
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:5000/api";
-
-
 // ---------------------------------------------------------
 // SMALL DISPLAY HELPERS
 // ---------------------------------------------------------
@@ -156,42 +144,6 @@ function App() {
     getAccessTokenSilently,
   } = useAuth0();
 
-
-  // -----------------------------------------------------
-  // CONNECT AUTH0 TO THE AXIOS CLIENT
-  // -----------------------------------------------------
-  //
-  // The shared API client calls this provider before every
-  // backend request.
-  //
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setAccessTokenProvider(null);
-      return;
-    }
-
-    setAccessTokenProvider(
-      async () => {
-        return getAccessTokenSilently({
-          authorizationParams: {
-            audience:
-              import.meta.env
-                .VITE_AUTH0_AUDIENCE,
-
-            scope:
-              "openid profile email",
-          },
-        });
-      }
-    );
-
-    return () => {
-      setAccessTokenProvider(null);
-    };
-  }, [
-    isAuthenticated,
-    getAccessTokenSilently,
-  ]);
   // -----------------------------------------------------
   // HOME STATE
   // -----------------------------------------------------
@@ -448,9 +400,8 @@ function App() {
 
   async function fetchHomes() {
     try {
-      const response = await api.get(
-        `${API_URL}/homes`
-      );
+      const response =
+        await api.get("/homes");
 
       setHomes(response.data);
 
@@ -459,7 +410,9 @@ function App() {
         response.data.length > 0 &&
         !selectedHome
       ) {
-        setSelectedHome(response.data[0]);
+        setSelectedHome(
+          response.data[0]
+        );
       }
     } catch (error) {
       console.error(
@@ -503,23 +456,23 @@ function App() {
         documentsResponse,
       ] = await Promise.all([
         api.get(
-          `${API_URL}/homes/${homeId}/issues`
+          `/homes/${homeId}/issues`
         ),
 
         api.get(
-          `${API_URL}/homes/${homeId}/projects`
+          `/homes/${homeId}/projects`
         ),
 
         api.get(
-          `${API_URL}/homes/${homeId}/assets`
+          `/homes/${homeId}/assets`
         ),
 
         api.get(
-          `${API_URL}/homes/${homeId}/memories`
+          `/homes/${homeId}/memories`
         ),
 
         api.get(
-          `${API_URL}/homes/${homeId}/documents`
+          `/homes/${homeId}/documents`
         ),
       ]);
 
@@ -559,7 +512,7 @@ function App() {
 
     try {
       const response = await api.post(
-        `${API_URL}/homes`,
+        "/homes",
         {
           name: homeForm.name.trim(),
 
@@ -630,7 +583,7 @@ function App() {
       setAgentResponse(null);
 
       const response = await api.post(
-        `${API_URL}/homes/${selectedHome.id}/ask`,
+        `/homes/${selectedHome.id}/ask`,
         {
           question: question.trim(),
         }
@@ -750,7 +703,7 @@ function App() {
       );
 
       const response = await api.post(
-        `${API_URL}/homes/${selectedHome.id}/documents/upload`,
+        `/homes/${selectedHome.id}/documents/upload`,
         formData
       );
 
@@ -813,7 +766,7 @@ function App() {
 
     try {
       const response = await api.get(
-        `${API_URL}/documents/${documentRecord.id}/download-url`
+        `/documents/${documentRecord.id}/download-url`
       );
 
       const signedUrl =
@@ -873,7 +826,7 @@ function App() {
 
     try {
       await api.post(
-        `${API_URL}/homes/${selectedHome.id}/memories`,
+        `/homes/${selectedHome.id}/memories`,
         {
           title:
             memoryForm.title.trim(),

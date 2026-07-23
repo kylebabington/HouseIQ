@@ -6,7 +6,13 @@ import axios from "axios";
 // ---------------------------------------------------------
 // API BASE URL
 // ---------------------------------------------------------
-
+//
+// VITE_API_URL should include the backend's /api prefix.
+//
+// Local example:
+//
+// http://localhost:5000/api
+//
 const API_BASE_URL =
     import.meta.env.VITE_API_URL ||
     "http://localhost:5000/api";
@@ -16,17 +22,20 @@ const API_BASE_URL =
 // SHARED AXIOS INSTANCE
 // ---------------------------------------------------------
 //
-// Every HouseIQ request should use this instance instead
-// of importing the default Axios object directly.
+// Every HouseIQ backend request should use this Axios
+// instance instead of importing Axios directly.
+//
+// Axios will combine:
+//
+// baseURL: http://localhost:5000/api
+// request: /homes
+//
+// into:
+//
+// http://localhost:5000/api/homes
 //
 const api = axios.create({
-    baseURL:
-        API_BASE_URL,
-
-    headers: {
-        "Content-Type":
-            "application/json",
-    },
+    baseURL: API_BASE_URL,
 });
 
 
@@ -34,50 +43,59 @@ const api = axios.create({
 // ACCESS-TOKEN PROVIDER
 // ---------------------------------------------------------
 //
-// api.js is not a React component, so it cannot directly use:
+// This module is not a React component, so it cannot call:
 //
 // useAuth0()
 //
-// Instead, App.jsx gives this file a function capable of
-// retrieving the current Auth0 access token.
+// App.jsx registers a function here that can retrieve the
+// current Auth0 access token.
 //
 let accessTokenProvider = null;
 
 
 /**
- * Registers a function that returns the current access token.
+ * Registers or clears the Auth0 access-token provider.
  *
- * App.jsx will supply Auth0's getAccessTokenSilently function.
+ * @param {null | (() => Promise<string>)} provider
  */
 export function setAccessTokenProvider(
     provider
 ) {
-    accessTokenProvider =
-        provider;
+    accessTokenProvider = provider;
 }
 
 
 // ---------------------------------------------------------
-// REQUEST INTERCEPTOR
+// AUTHENTICATED REQUEST INTERCEPTOR
 // ---------------------------------------------------------
 //
-// Before every request:
+// Before each request:
 //
-// 1. Ask Auth0 for the current access token.
-// 2. Add it to the Authorization header.
-// 3. Send the request to Express.
+// 1. Check whether App.jsx registered a token provider.
+// 2. Ask Auth0 for a valid access token.
+// 3. Add the token to the Authorization header.
+// 4. Allow Axios to send the request.
 //
 api.interceptors.request.use(
     async (config) => {
-        if (accessTokenProvider) {
-            const token =
-                await accessTokenProvider();
-
-            if (token) {
-                config.headers.Authorization =
-                    `Bearer ${token}`;
-            }
+        if (!accessTokenProvider) {
+            return config;
         }
+
+        const accessToken =
+            await accessTokenProvider();
+
+        if (!accessToken) {
+            return config;
+        }
+
+        // Axios normally creates this object, but this fallback
+        // makes the code defensive and easier to understand.
+        config.headers =
+            config.headers || {};
+
+        config.headers.Authorization =
+            `Bearer ${accessToken}`;
 
         return config;
     },
