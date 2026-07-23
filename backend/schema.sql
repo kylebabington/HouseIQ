@@ -1,8 +1,26 @@
 -- backend/schema.sql
 
--- Main home profile
+-- ---------------------------------------------------------
+-- HOMES
+-- ---------------------------------------------------------
+--
+-- Each home belongs to one authenticated Auth0 user.
+--
+-- Auth0 identifies users with the stable `sub` claim.
+--
+-- Example:
+--
+-- google-oauth2|111906979750891104809
+--
+-- owner_auth0_id is temporarily nullable because this
+-- database may already contain development homes created
+-- before authentication and ownership were added.
+--
 CREATE TABLE IF NOT EXISTS homes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Stable Auth0 user identifier from req.auth.payload.sub.
+  owner_auth0_id STRING,
 
   name STRING NOT NULL,
   year_built INT,
@@ -172,9 +190,44 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Backfill columns added after initial deploy
-ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS memories_used JSONB NOT NULL DEFAULT '[]'::JSONB;
-ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS actions_taken JSONB NOT NULL DEFAULT '[]'::JSONB;
+-- ---------------------------------------------------------
+-- BACKFILL COLUMNS ADDED AFTER INITIAL DEPLOYMENT
+-- ---------------------------------------------------------
+--
+-- CREATE TABLE IF NOT EXISTS does not change tables that
+-- already exist. These ALTER TABLE statements safely update
+-- existing development and production databases.
+--
+
+-- Add Auth0 ownership to existing homes.
+--
+-- Keep this nullable temporarily because existing homes
+-- were created before ownership was implemented.
+ALTER TABLE homes
+ADD COLUMN IF NOT EXISTS owner_auth0_id STRING;
+
+
+-- Add structured agent-run fields introduced after the
+-- original agent_runs table was created.
+ALTER TABLE agent_runs
+ADD COLUMN IF NOT EXISTS memories_used JSONB
+NOT NULL DEFAULT '[]'::JSONB;
+
+ALTER TABLE agent_runs
+ADD COLUMN IF NOT EXISTS actions_taken JSONB
+NOT NULL DEFAULT '[]'::JSONB;
+
+
+-- ---------------------------------------------------------
+-- INDEXES
+-- ---------------------------------------------------------
+
+-- Home-list requests filter by the authenticated Auth0 user.
+--
+-- This index helps CockroachDB efficiently locate all homes
+-- belonging to one user without scanning every home row.
+CREATE INDEX IF NOT EXISTS idx_homes_owner_auth0_id
+ON homes (owner_auth0_id);
 
 CREATE INDEX IF NOT EXISTS idx_memories_home_id
 ON memories (home_id);

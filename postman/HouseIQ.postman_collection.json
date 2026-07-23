@@ -1,0 +1,746 @@
+{
+  "info": {
+    "_postman_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "name": "HouseIQ API",
+    "description": "Full HouseIQ backend collection.\n\n## Setup\n1. Import `HouseIQ.Local.postman_environment.json` and select **HouseIQ Local**.\n2. Paste an Auth0 API access token into `accessToken` (audience must match the backend `AUTH0_AUDIENCE`).\n3. Run **Auth → Get current user** to confirm the token works.\n4. Run **Homes → List homes** or **Create home** — scripts auto-save `homeId`.\n\n## Auth notes\n- Protected routes: `GET /api/auth/me`, `POST /api/homes`, `GET /api/homes`.\n- Other home-scoped routes are currently public (no Bearer required), but the collection still sends the token when present.\n- Do **not** send `ownerAuth0Id` in create-home bodies — ownership comes from the token `sub` claim.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Diagnostics",
+      "description": "Public smoke checks — no Auth0 token required.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "Returns a simple JSON message confirming the Express server is up."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Backend is running', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.include('HouseIQ');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Database connection test",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/db-test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "db-test"]
+            },
+            "description": "Runs `SELECT now()` against CockroachDB Cloud via the shared pool."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns currentTime', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('currentTime');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Auth0 JWT validation. Requires a valid HouseIQ API access token in `accessToken`.",
+      "item": [
+        {
+          "name": "Get current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Protected. Validates the Bearer token and returns `auth0UserId` from the `sub` claim plus the full payload."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Authenticated with Auth0 subject', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.authenticated).to.eql(true);",
+                  "  pm.expect(body.auth0UserId).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get current user (missing token)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Negative test — expects 401 when Authorization is omitted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Homes",
+      "description": "Create and list homes for the authenticated Auth0 user. Ownership is taken from the token `sub`, never from the request body.",
+      "item": [
+        {
+          "name": "List my homes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/homes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes"]
+            },
+            "description": "Protected. Returns only homes where `owner_auth0_id` matches the token subject."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns an array', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an('array');",
+                  "  if (body.length > 0 && body[0].id) {",
+                  "    pm.environment.set('homeId', body[0].id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create home",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Test Home\",\n  \"yearBuilt\": 2018,\n  \"notes\": \"Created from the HouseIQ Postman collection\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes"]
+            },
+            "description": "Protected. Creates a home owned by the authenticated user. `name` is required (whitespace-only names are rejected)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('Returns home without owner_auth0_id', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('id');",
+                  "  pm.expect(body).to.have.property('name');",
+                  "  pm.expect(body).to.not.have.property('owner_auth0_id');",
+                  "  pm.environment.set('homeId', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create home (missing name)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \",\n  \"yearBuilt\": 2000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes"]
+            },
+            "description": "Negative test — trimmed empty name should return 400."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create home (missing token)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Should Fail\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes"]
+            },
+            "description": "Negative test — expects 401 without a Bearer token."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Memories",
+      "description": "Manual memory create, list, and semantic search for a home. Set `homeId` first.",
+      "item": [
+        {
+          "name": "Create memory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"HVAC filter size\",\n  \"category\": \"maintenance\",\n  \"content\": \"Furnace uses a 16x25x1 filter. Replace every 90 days.\",\n  \"importance\": 4,\n  \"metadata\": {\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/memories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "memories"]
+            },
+            "description": "`content` is required. Optional: `title`, `category`, `assetId`, `metadata`, `importance` (default 3)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) {",
+                  "  pm.environment.set('memoryId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List memories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/memories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "memories"]
+            },
+            "description": "Returns all memories for the home, newest first."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns an array', function () {",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Semantic memory search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"What size furnace filter do I need?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/memory-search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "memory-search"]
+            },
+            "description": "Embeds `query` and returns the top 5 similar memories by cosine distance. Requires OpenAI + memories with embeddings."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns results array', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('query');",
+                  "  pm.expect(body.results).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Issues, Projects & Assets",
+      "description": "Read-only listings for home issues, projects (with tasks), and assets.",
+      "item": [
+        {
+          "name": "List issues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/issues",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "issues"]
+            },
+            "description": "Returns issues for the home ordered by priority then created_at."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "projects"]
+            },
+            "description": "Returns projects with nested `tasks` arrays."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/assets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "assets"]
+            },
+            "description": "Returns appliances, systems, tools, and equipment for the home."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "description": "Upload/analyze documents, list them, create temporary download URLs, and delete. Upload expects multipart field name `document`.",
+      "item": [
+        {
+          "name": "List documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "documents"]
+            },
+            "description": "Lists document metadata for a home (no file bytes)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "if (Array.isArray(body) && body.length > 0 && body[0].id) {",
+                  "  pm.environment.set('documentId', body[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "document",
+                  "description": "PDF or plain-text file. Field name must be `document`.",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "documentType",
+                  "value": "manual",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/documents/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "documents", "upload"]
+            },
+            "description": "Full document workflow: extract text → AI analysis → S3 upload → DB records. Select a PDF/TXT file for the `document` field before sending. Optional `documentType` defaults to `general`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const id = body.document?.id || body.id || body.documentId;",
+                  "  if (id) {",
+                  "    pm.environment.set('documentId', id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get document download URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/download-url",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "download-url"]
+            },
+            "description": "Creates a temporary (~5 minute) signed S3 URL for the original private file. Returns 409 if the document has no `s3Key`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or expected error', function () {",
+                  "  pm.expect([200, 404, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}"]
+            },
+            "description": "Deletes the S3 object (if present) and the CockroachDB document row."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Agent",
+      "description": "HouseIQ agent — retrieves memories and can create memories, issues, projects, and assets.",
+      "item": [
+        {
+          "name": "Ask HouseIQ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What do you know about this home's HVAC system?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/ask",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "ask"]
+            },
+            "description": "`question` is required (non-empty string). Calls OpenAI with retrieved memories and may persist new records."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ask HouseIQ (missing question)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"   \"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/homes/{{homeId}}/ask",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "homes", "{{homeId}}", "ask"]
+            },
+            "description": "Negative test — blank question should return 400."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

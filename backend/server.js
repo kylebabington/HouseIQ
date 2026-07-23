@@ -607,52 +607,167 @@ app.get("/api/db-test", async (req, res) => {
     }
 });
 
-// Create a new home
-app.post("/api/homes", async (req, res) => {
-    try {
-        const { name, yearBuilt, notes } = req.body;
+// ---------------------------------------------------------
+// CREATE A HOME
+// ---------------------------------------------------------
+//
+// This route is protected by Auth0.
+//
+// The frontend must send:
+//
+// Authorization: Bearer ACCESS_TOKEN
+//
+// requireAuth validates the token before this handler runs.
+//
+// The home is automatically assigned to the Auth0 user
+// identified by the token's stable `sub` claim.
+//
+app.post(
+    "/api/homes",
 
-        if (!name) {
-            return res.status(400).json({
-                error: "Home name is required",
+    // Reject missing, expired, malformed, or invalid tokens.
+    requireAuth,
+
+    async (req, res) => {
+        try {
+            const {
+                name,
+                yearBuilt,
+                notes,
+            } = req.body;
+
+            // Remove surrounding whitespace before validating.
+            //
+            // This prevents a name containing only spaces from
+            // being accepted as a legitimate home name.
+            const safeName =
+                typeof name === "string"
+                    ? name.trim()
+                    : "";
+
+            if (!safeName) {
+                return res.status(400).json({
+                    error:
+                        "Home name is required",
+                });
+            }
+
+            // Auth0's stable user ID comes from the validated
+            // token's `sub` claim.
+            //
+            // Example:
+            //
+            // google-oauth2|111906979750891104809
+            //
+            const ownerAuth0Id =
+                getAuthenticatedUserId(req);
+
+            const result =
+                await pool.query(
+                    `
+                    INSERT INTO homes (
+                        owner_auth0_id,
+                        name,
+                        year_built,
+                        notes
+                    )
+                    VALUES (
+                        $1,
+                        $2,
+                        $3,
+                        $4
+                    )
+                    RETURNING
+                        id,
+                        name,
+                        year_built,
+                        notes,
+                        created_at,
+                        updated_at
+                    `,
+                    [
+                        ownerAuth0Id,
+                        safeName,
+                        yearBuilt || null,
+                        typeof notes ===
+                            "string"
+                            ? notes.trim()
+                            : "",
+                    ]
+                );
+
+            return res
+                .status(201)
+                .json(result.rows[0]);
+        } catch (error) {
+            console.error(
+                "Error creating home:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to create home",
             });
         }
-
-        const result = await pool.query(
-            `
-      INSERT INTO homes (name, year_built, notes)
-      VALUES ($1, $2, $3)
-      RETURNING *
-      `,
-            [name, yearBuilt || null, notes || ""]
-        );
-
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error("Error creating home:", error);
-        res.status(500).json({
-            error: "Failed to create home",
-        });
     }
-});
+);
 
-// Get all homes
-app.get("/api/homes", async (req, res) => {
-    try {
-        const result = await pool.query(`
-      SELECT *
-      FROM homes
-      ORDER BY created_at DESC
-    `);
+// ---------------------------------------------------------
+// GET THE AUTHENTICATED USER'S HOMES
+// ---------------------------------------------------------
+//
+// This route no longer returns every home in the database.
+//
+// It returns only homes whose owner_auth0_id matches the
+// stable Auth0 `sub` claim from the validated access token.
+//
+app.get(
+    "/api/homes",
 
-        res.json(result.rows);
-    } catch (error) {
-        console.error("Error fetching homes:", error);
-        res.status(500).json({
-            error: "Failed to fetch homes",
-        });
+    // A valid HouseIQ API access token is required.
+    requireAuth,
+
+    async (req, res) => {
+        try {
+            const ownerAuth0Id =
+                getAuthenticatedUserId(req);
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        name,
+                        year_built,
+                        notes,
+                        created_at,
+                        updated_at
+                    FROM homes
+                    WHERE owner_auth0_id = $1
+                    ORDER BY created_at DESC
+                    `,
+                    [
+                        ownerAuth0Id,
+                    ]
+                );
+
+            return res.json(
+                result.rows
+            );
+        } catch (error) {
+            console.error(
+                "Error fetching homes:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to fetch homes",
+            });
+        }
     }
-});
+);
 
 // Add a memory to a home manually.
 // Later, most memories will be created automatically by the agent,
