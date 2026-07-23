@@ -3,6 +3,9 @@
 // Loads variables from .env into process.env
 import "dotenv/config";
 
+import path from "path";
+import { fileURLToPath } from "url";
+
 // Express creates our API server
 import express from "express";
 
@@ -112,6 +115,110 @@ const pool = new Pool({
         rejectUnauthorized: false,
     },
 });
+
+// ---------------------------------------------------------
+// HOME OWNERSHIP AUTHORIZATION
+// ---------------------------------------------------------
+//
+// Authentication answers:
+//
+// "Who is making this request?"
+//
+// This middleware answers:
+//
+// "Does that authenticated user own the requested home?"
+//
+// It must run only after requireAuth, because it depends on
+// req.auth.payload.sub being available.
+//
+async function requireHomeOwnership(
+    req,
+    res,
+    next
+) {
+    try {
+        // All home-specific routes use the parameter name:
+        //
+        // :homeId
+        //
+        // Example:
+        //
+        // /api/homes/123/memories
+        //
+        const { homeId } = req.params;
+
+        if (!homeId) {
+            return res.status(400).json({
+                error:
+                    "Home ID is required",
+            });
+        }
+
+        // Read the stable Auth0 user ID from the access token.
+        //
+        // requireAuth must run before this middleware.
+        //
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        // Find a home only when both conditions are true:
+        //
+        // 1. The home ID matches the requested URL.
+        // 2. The home belongs to the authenticated Auth0 user.
+        //
+        const result =
+            await pool.query(
+                `
+                SELECT
+                    id,
+                    owner_auth0_id
+                FROM homes
+                WHERE id = $1
+                  AND owner_auth0_id = $2
+                LIMIT 1
+                `,
+                [
+                    homeId,
+                    ownerAuth0Id,
+                ]
+            );
+
+        // Return 404 whether the home does not exist or belongs
+        // to another user.
+        //
+        // We intentionally do not return 403 here because that
+        // would reveal that another user's home exists.
+        //
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error:
+                    "Home not found",
+            });
+        }
+
+        // Store the verified home ID on the request.
+        //
+        // Route handlers can continue using req.params.homeId,
+        // but this gives us a trusted authorization result for
+        // future middleware and controllers.
+        //
+        req.authorizedHomeId =
+            result.rows[0].id;
+
+        // Continue to the actual route handler.
+        return next();
+    } catch (error) {
+        console.error(
+            "Home ownership check failed:",
+            error
+        );
+
+        return res.status(500).json({
+            error:
+                "Could not verify home access",
+        });
+    }
+}
 
 // ---------------------------------------------------------
 // DATABASE RECORD HELPERS
@@ -607,337 +714,488 @@ app.get("/api/db-test", async (req, res) => {
     }
 });
 
-// Create a new home
-app.post("/api/homes", async (req, res) => {
-    try {
-        const { name, yearBuilt, notes } = req.body;
+// Create a new home owned by the authenticated Auth0 user.
+app.post(
+    "/api/homes",
+    requireAuth,
+    async (req, res) => {
+        try {
+            const { name, yearBuilt, notes } = req.body;
 
-        if (!name) {
-            return res.status(400).json({
-                error: "Home name is required",
-            });
-        }
+            if (!name) {
+                return res.status(400).json({
+                    error: "Home name is required",
+                });
+            }
 
-        const result = await pool.query(
-            `
-      INSERT INTO homes (name, year_built, notes)
-      VALUES ($1, $2, $3)
+            const ownerAuth0Id =
+                getAuthenticatedUserId(req);
+
+            const result = await pool.query(
+                `
+      INSERT INTO homes (
+        owner_auth0_id,
+        name,
+        year_built,
+        notes
+      )
+      VALUES ($1, $2, $3, $4)
       RETURNING *
       `,
-            [name, yearBuilt || null, notes || ""]
-        );
+                [
+                    ownerAuth0Id,
+                    name,
+                    yearBuilt || null,
+                    notes || "",
+                ]
+            );
 
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error("Error creating home:", error);
-        res.status(500).json({
-            error: "Failed to create home",
-        });
+            res.status(201).json(result.rows[0]);
+        } catch (error) {
+            console.error("Error creating home:", error);
+            res.status(500).json({
+                error: "Failed to create home",
+            });
+        }
     }
-});
+);
 
-// Get all homes
-app.get("/api/homes", async (req, res) => {
-    try {
-        const result = await pool.query(`
+// Get homes owned by the authenticated Auth0 user.
+app.get(
+    "/api/homes",
+    requireAuth,
+    async (req, res) => {
+        try {
+            const ownerAuth0Id =
+                getAuthenticatedUserId(req);
+
+            const result = await pool.query(
+                `
       SELECT *
       FROM homes
+      WHERE owner_auth0_id = $1
       ORDER BY created_at DESC
-    `);
+      `,
+                [ownerAuth0Id]
+            );
 
-        res.json(result.rows);
-    } catch (error) {
-        console.error("Error fetching homes:", error);
-        res.status(500).json({
-            error: "Failed to fetch homes",
-        });
+            res.json(result.rows);
+        } catch (error) {
+            console.error("Error fetching homes:", error);
+            res.status(500).json({
+                error: "Failed to fetch homes",
+            });
+        }
     }
-});
+);
 
 // Add a memory to a home manually.
-// Later, most memories will be created automatically by the agent,
-// but keeping this route is useful for testing and power users.
-app.post("/api/homes/:homeId/memories", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-
-        const {
-            title,
-            category,
-            content,
-            assetId,
-            metadata,
-            importance,
-        } = req.body;
-
-        if (!content) {
-            return res.status(400).json({
-                error: "Memory content is required",
-            });
-        }
-
-        const memory = await createMemoryRecord({
-            homeId,
-            assetId: assetId || null,
-            title: title || "Untitled memory",
-            category: category || "general",
-            content,
-            metadata: metadata || {},
-            importance: importance || 3,
-        });
-
-        res.status(201).json(memory);
-    } catch (error) {
-        console.error("Error creating memory:", error);
-
-        res.status(500).json({
-            error: "Failed to create memory",
-            details: error.message,
-        });
-    }
-});
-
-// Get memories for one home
-app.get("/api/homes/:homeId/memories", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-
-        const result = await pool.query(
-            `
-      SELECT *
-      FROM memories
-      WHERE home_id = $1
-      ORDER BY created_at DESC
-      `,
-            [homeId]
-        );
-
-        res.json(result.rows);
-    } catch (error) {
-        console.error("Error fetching memories:", error);
-        res.status(500).json({
-            error: "Failed to fetch memories",
-        });
-    }
-});
-
-// Semantic memory search
-app.post("/api/homes/:homeId/memory-search", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-        const { query } = req.body;
-
-        if (!query) {
-            return res.status(400).json({
-                error: "Search query is required",
-            });
-        }
-
-        const queryEmbedding = await createEmbedding(query);
-        const queryVectorSql = vectorToSql(queryEmbedding);
-
-        const result = await pool.query(
-            `
-      SELECT
-        id,
-        title,
-        category,
-        content,
-        metadata,
-        importance,
-        created_at,
-
-        -- Lower cosine distance means more similar.
-        embedding <=> $2::VECTOR(1536) AS similarity_distance
-
-      FROM memories
-      WHERE home_id = $1
-        AND embedding IS NOT NULL
-
-      ORDER BY embedding <=> $2::VECTOR(1536)
-
-      LIMIT 5
-      `,
-            [homeId, queryVectorSql]
-        );
-
-        res.json({
-            query,
-            results: result.rows,
-        });
-    } catch (error) {
-        console.error("Memory search failed:", error);
-
-        res.status(500).json({
-            error: "Memory search failed",
-            details: error.message,
-        });
-    }
-});
-
-// ---------------------------------------------------------
-// GET HOME ISSUES
-// ---------------------------------------------------------
 //
-// Returns all issues belonging to one home.
+// Authentication confirms who the user is.
+// Home ownership confirms that the requested home belongs
+// to that authenticated user.
 //
-// The frontend uses this route to populate the Issues tab.
-//
-app.get("/api/homes/:homeId/issues", async (req, res) => {
-    try {
-        const { homeId } = req.params;
+app.post(
+    "/api/homes/:homeId/memories",
+    requireAuth,
+    requireHomeOwnership,
 
-        const result = await pool.query(
-            `
-            SELECT *
-            FROM home_issues
-            WHERE home_id = $1
-            ORDER BY
-                CASE priority
-                    WHEN 'urgent' THEN 1
-                    WHEN 'high' THEN 2
-                    WHEN 'medium' THEN 3
-                    WHEN 'low' THEN 4
-                    ELSE 5
-                END,
-                created_at DESC
-            `,
-            [homeId]
-        );
+    async (req, res) => {
+        try {
+            const { homeId } =
+                req.params;
 
-        res.json(result.rows);
-    } catch (error) {
-        console.error(
-            "Error fetching home issues:",
-            error
-        );
+            const {
+                title,
+                category,
+                content,
+                assetId,
+                metadata,
+                importance,
+            } = req.body;
 
-        res.status(500).json({
-            error: "Failed to fetch home issues",
-            details: error.message,
-        });
-    }
-});
-
-// ---------------------------------------------------------
-// GET HOME PROJECTS
-// ---------------------------------------------------------
-//
-// Returns each project along with its project tasks.
-//
-// We retrieve the projects first, then retrieve all tasks
-// belonging to those projects.
-//
-app.get("/api/homes/:homeId/projects", async (req, res) => {
-    try {
-        const { homeId } = req.params;
-
-        // Get every project for this home.
-        const projectsResult = await pool.query(
-            `
-            SELECT *
-            FROM home_projects
-            WHERE home_id = $1
-            ORDER BY created_at DESC
-            `,
-            [homeId]
-        );
-
-        const projects = projectsResult.rows;
-
-        // If the home has no projects, return immediately.
-        //
-        // This also prevents us from building an invalid
-        // SQL query with an empty list of project IDs.
-        if (projects.length === 0) {
-            return res.json([]);
-        }
-
-        const projectIds = projects.map(
-            (project) => project.id
-        );
-
-        // Get all tasks belonging to any of these projects.
-        //
-        // ANY($1::UUID[]) means:
-        //
-        // "Return rows where project_id equals any UUID
-        // inside the supplied array."
-        const tasksResult = await pool.query(
-            `
-            SELECT *
-            FROM project_tasks
-            WHERE project_id = ANY($1::UUID[])
-            ORDER BY project_id, task_order ASC
-            `,
-            [projectIds]
-        );
-
-        const tasks = tasksResult.rows;
-
-        // Attach the correct tasks to each project.
-        const projectsWithTasks = projects.map(
-            (project) => {
-                return {
-                    ...project,
-
-                    tasks: tasks.filter(
-                        (task) =>
-                            task.project_id ===
-                            project.id
-                    ),
-                };
+            if (!content) {
+                return res.status(400).json({
+                    error:
+                        "Memory content is required",
+                });
             }
-        );
 
-        res.json(projectsWithTasks);
-    } catch (error) {
-        console.error(
-            "Error fetching home projects:",
-            error
-        );
+            const memory =
+                await createMemoryRecord({
+                    homeId,
+                    assetId:
+                        assetId || null,
+                    title:
+                        title ||
+                        "Untitled memory",
+                    category:
+                        category ||
+                        "general",
+                    content,
+                    metadata:
+                        metadata || {},
+                    importance:
+                        importance || 3,
+                });
 
-        res.status(500).json({
-            error: "Failed to fetch home projects",
-            details: error.message,
-        });
+            return res
+                .status(201)
+                .json(memory);
+        } catch (error) {
+            console.error(
+                "Error creating memory:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to create memory",
+                details:
+                    error.message,
+            });
+        }
     }
-});
+);
 
 // ---------------------------------------------------------
-// GET HOME ASSETS
+// GET MEMORIES FOR ONE OWNED HOME
+// ---------------------------------------------------------
+
+app.get(
+    "/api/homes/:homeId/memories",
+    requireAuth,
+    requireHomeOwnership,
+
+    async (req, res) => {
+        try {
+            const { homeId } =
+                req.params;
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT *
+                    FROM memories
+                    WHERE home_id = $1
+                    ORDER BY created_at DESC
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
+
+            return res.json(
+                result.rows
+            );
+        } catch (error) {
+            console.error(
+                "Error fetching memories:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to fetch memories",
+            });
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// SEMANTIC MEMORY SEARCH FOR ONE OWNED HOME
+// ---------------------------------------------------------
+
+app.post(
+    "/api/homes/:homeId/memory-search",
+    requireAuth,
+    requireHomeOwnership,
+
+    async (req, res) => {
+        try {
+            const { homeId } =
+                req.params;
+
+            const { query } =
+                req.body;
+
+            const safeQuery =
+                typeof query === "string"
+                    ? query.trim()
+                    : "";
+
+            if (!safeQuery) {
+                return res.status(400).json({
+                    error:
+                        "Search query is required",
+                });
+            }
+
+            const queryEmbedding =
+                await createEmbedding(
+                    safeQuery
+                );
+
+            const queryVectorSql =
+                vectorToSql(
+                    queryEmbedding
+                );
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        title,
+                        category,
+                        content,
+                        metadata,
+                        importance,
+                        created_at,
+
+                        embedding <=>
+                            $2::VECTOR(1536)
+                            AS similarity_distance
+
+                    FROM memories
+                    WHERE home_id = $1
+                      AND embedding IS NOT NULL
+
+                    ORDER BY
+                        embedding <=>
+                        $2::VECTOR(1536)
+
+                    LIMIT 5
+                    `,
+                    [
+                        homeId,
+                        queryVectorSql,
+                    ]
+                );
+
+            return res.json({
+                query:
+                    safeQuery,
+                results:
+                    result.rows,
+            });
+        } catch (error) {
+            console.error(
+                "Memory search failed:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Memory search failed",
+                details:
+                    error.message,
+            });
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// GET ISSUES FOR ONE OWNED HOME
+// ---------------------------------------------------------
+
+app.get(
+    "/api/homes/:homeId/issues",
+    requireAuth,
+    requireHomeOwnership,
+
+    async (req, res) => {
+        try {
+            const { homeId } =
+                req.params;
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT *
+                    FROM home_issues
+                    WHERE home_id = $1
+                    ORDER BY
+                        CASE priority
+                            WHEN 'urgent' THEN 1
+                            WHEN 'high' THEN 2
+                            WHEN 'medium' THEN 3
+                            WHEN 'low' THEN 4
+                            ELSE 5
+                        END,
+                        created_at DESC
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
+
+            return res.json(
+                result.rows
+            );
+        } catch (error) {
+            console.error(
+                "Error fetching home issues:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to fetch home issues",
+                details:
+                    error.message,
+            });
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// GET PROJECTS FOR ONE OWNED HOME
 // ---------------------------------------------------------
 //
-// Returns appliances, systems, tools, and equipment
-// connected to one home.
+// Project tasks do not contain home_id directly.
 //
-app.get("/api/homes/:homeId/assets", async (req, res) => {
-    try {
-        const { homeId } = req.params;
+// Ownership is still protected because:
+//
+// 1. The middleware verifies the home.
+// 2. Projects are loaded only from that verified home.
+// 3. Tasks are loaded only for those returned project IDs.
+//
+app.get(
+    "/api/homes/:homeId/projects",
+    requireAuth,
+    requireHomeOwnership,
 
-        const result = await pool.query(
-            `
-            SELECT *
-            FROM home_assets
-            WHERE home_id = $1
-            ORDER BY created_at DESC
-            `,
-            [homeId]
-        );
+    async (req, res) => {
+        try {
+            const { homeId } =
+                req.params;
 
-        res.json(result.rows);
-    } catch (error) {
-        console.error(
-            "Error fetching home assets:",
-            error
-        );
+            const projectsResult =
+                await pool.query(
+                    `
+                    SELECT *
+                    FROM home_projects
+                    WHERE home_id = $1
+                    ORDER BY created_at DESC
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
 
-        res.status(500).json({
-            error: "Failed to fetch home assets",
-            details: error.message,
-        });
+            const projects =
+                projectsResult.rows;
+
+            if (projects.length === 0) {
+                return res.json([]);
+            }
+
+            const projectIds =
+                projects.map(
+                    (project) =>
+                        project.id
+                );
+
+            const tasksResult =
+                await pool.query(
+                    `
+                    SELECT *
+                    FROM project_tasks
+                    WHERE project_id =
+                        ANY($1::UUID[])
+                    ORDER BY
+                        project_id,
+                        task_order ASC
+                    `,
+                    [
+                        projectIds,
+                    ]
+                );
+
+            const tasks =
+                tasksResult.rows;
+
+            const projectsWithTasks =
+                projects.map(
+                    (project) => {
+                        return {
+                            ...project,
+
+                            tasks:
+                                tasks.filter(
+                                    (task) =>
+                                        task.project_id ===
+                                        project.id
+                                ),
+                        };
+                    }
+                );
+
+            return res.json(
+                projectsWithTasks
+            );
+        } catch (error) {
+            console.error(
+                "Error fetching home projects:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to fetch home projects",
+                details:
+                    error.message,
+            });
+        }
     }
-});
+);
+
+// ---------------------------------------------------------
+// GET ASSETS FOR ONE OWNED HOME
+// ---------------------------------------------------------
+
+app.get(
+    "/api/homes/:homeId/assets",
+    requireAuth,
+    requireHomeOwnership,
+
+    async (req, res) => {
+        try {
+            const { homeId } =
+                req.params;
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT *
+                    FROM home_assets
+                    WHERE home_id = $1
+                    ORDER BY created_at DESC
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
+
+            return res.json(
+                result.rows
+            );
+        } catch (error) {
+            console.error(
+                "Error fetching home assets:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Failed to fetch home assets",
+                details:
+                    error.message,
+            });
+        }
+    }
+);
 
 // Ask HouseIQ a question.
 // This is now the main agent endpoint.
@@ -951,44 +1209,55 @@ app.get("/api/homes/:homeId/assets", async (req, res) => {
 // - create assets
 
 // ---------------------------------------------------------
-// GET DOCUMENTS FOR A HOME
+// GET DOCUMENTS FOR ONE OWNED HOME
 // ---------------------------------------------------------
 
 app.get(
     "/api/homes/:homeId/documents",
+    requireAuth,
+    requireHomeOwnership,
+
     async (req, res) => {
         try {
-            const { homeId } = req.params;
+            const { homeId } =
+                req.params;
 
-            const result = await pool.query(
-                `
-                SELECT
-                    id,
-                    home_id,
-                    document_type,
-                    file_name,
-                    source_url,
-                    summary,
-                    metadata,
-                    created_at,
-                    updated_at
-                FROM documents
-                WHERE home_id = $1
-                ORDER BY created_at DESC
-                `,
-                [homeId]
+            const result =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        home_id,
+                        document_type,
+                        file_name,
+                        source_url,
+                        summary,
+                        metadata,
+                        created_at,
+                        updated_at
+                    FROM documents
+                    WHERE home_id = $1
+                    ORDER BY created_at DESC
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
+
+            return res.json(
+                result.rows
             );
-
-            res.json(result.rows);
         } catch (error) {
             console.error(
                 "Error fetching documents:",
                 error
             );
 
-            res.status(500).json({
-                error: "Failed to fetch documents",
-                details: error.message,
+            return res.status(500).json({
+                error:
+                    "Failed to fetch documents",
+                details:
+                    error.message,
             });
         }
     }
@@ -1268,11 +1537,11 @@ app.delete(
 //
 app.post(
     "/api/homes/:homeId/documents/upload",
-
-    // This field name must match the browser FormData field:
-    //
-    // formData.append("document", selectedFile)
-    //
+    // First validate the Auth0 token.
+    requireAuth,
+    // Then verify ownership of the URL's homeId.
+    requireHomeOwnership,
+    // Only authorized requests should reach the file parser.
     upload.single("document"),
 
     async (req, res) => {
@@ -1876,64 +2145,69 @@ app.post(
 // HOUSEIQ AGENT ENDPOINT
 // ---------------------------------------------------------
 
-app.post("/api/homes/:homeId/ask", async (req, res) => {
-    const { homeId } = req.params;
-    const { question } = req.body;
+app.post(
+    "/api/homes/:homeId/ask",
+    requireAuth,
+    requireHomeOwnership,
 
-    // Validate before doing any expensive AI work.
-    if (
-        typeof question !== "string" ||
-        !question.trim()
-    ) {
-        return res.status(400).json({
-            error: "Question is required",
-        });
-    }
+    async (req, res) => {
+        const { homeId } = req.params;
+        const { question } = req.body;
 
-    let client;
-    let agentResponse = null;
-    let relevantMemories = [];
+        // Validate before doing any expensive AI work.
+        if (
+            typeof question !== "string" ||
+            !question.trim()
+        ) {
+            return res.status(400).json({
+                error: "Question is required",
+            });
+        }
 
-    try {
-        // -------------------------------------------------
-        // 1. CONFIRM THAT THE HOME EXISTS
-        // -------------------------------------------------
+        let client;
+        let agentResponse = null;
+        let relevantMemories = [];
 
-        const homeResult = await pool.query(
-            `
+        try {
+            // -------------------------------------------------
+            // 1. CONFIRM THAT THE HOME EXISTS
+            // -------------------------------------------------
+
+            const homeResult = await pool.query(
+                `
             SELECT id, name, year_built, notes
             FROM homes
             WHERE id = $1
             `,
-            [homeId]
-        );
+                [homeId]
+            );
 
-        if (homeResult.rows.length === 0) {
-            return res.status(404).json({
-                error: "Home not found",
-            });
-        }
+            if (homeResult.rows.length === 0) {
+                return res.status(404).json({
+                    error: "Home not found",
+                });
+            }
 
-        const home = homeResult.rows[0];
-
-
-        // -------------------------------------------------
-        // 2. CREATE AN EMBEDDING FOR THE USER'S MESSAGE
-        // -------------------------------------------------
-
-        const questionEmbedding =
-            await createEmbedding(question.trim());
-
-        const questionVectorSql =
-            vectorToSql(questionEmbedding);
+            const home = homeResult.rows[0];
 
 
-        // -------------------------------------------------
-        // 3. RETRIEVE RELEVANT LONG-TERM MEMORIES
-        // -------------------------------------------------
+            // -------------------------------------------------
+            // 2. CREATE AN EMBEDDING FOR THE USER'S MESSAGE
+            // -------------------------------------------------
 
-        const memoriesResult = await pool.query(
-            `
+            const questionEmbedding =
+                await createEmbedding(question.trim());
+
+            const questionVectorSql =
+                vectorToSql(questionEmbedding);
+
+
+            // -------------------------------------------------
+            // 3. RETRIEVE RELEVANT LONG-TERM MEMORIES
+            // -------------------------------------------------
+
+            const memoriesResult = await pool.query(
+                `
             SELECT
                 id,
                 title,
@@ -1951,254 +2225,254 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
                 embedding <=> $2::VECTOR(1536)
             LIMIT 8
             `,
-            [
-                homeId,
-                questionVectorSql,
-            ]
-        );
-
-        relevantMemories = memoriesResult.rows;
-
-
-        // -------------------------------------------------
-        // 4. ASK THE HOUSEIQ AGENT WHAT TO DO
-        // -------------------------------------------------
-
-        agentResponse =
-            await generateHouseAgentResponse(
-                question.trim(),
-                relevantMemories
-            );
-
-
-        // -------------------------------------------------
-        // 5. START A DATABASE TRANSACTION
-        // -------------------------------------------------
-        //
-        // A transaction means all database actions succeed
-        // together or fail together.
-        //
-        // Without this, HouseIQ might create a memory and issue,
-        // fail while creating a project, and leave the database
-        // in a half-completed state.
-        //
-        client = await pool.connect();
-
-        await client.query("BEGIN");
-
-
-        // This object contains the actual database records created
-        // during this run.
-        const createdRecords = {
-            memories: [],
-            issues: [],
-            projects: [],
-            assets: [],
-        };
-
-
-        // This gives the frontend a simple human-readable list.
-        const actionsTaken = [];
-
-
-        // -------------------------------------------------
-        // 6. CREATE MEMORIES
-        // -------------------------------------------------
-
-        for (
-            const memoryInput of
-            agentResponse.memoriesToCreate
-        ) {
-            const createdMemory =
-                await createMemoryRecord({
+                [
                     homeId,
-
-                    title:
-                        memoryInput.title,
-
-                    category:
-                        memoryInput.category,
-
-                    content:
-                        memoryInput.content,
-
-                    importance:
-                        memoryInput.importance,
-
-                    metadata: {
-                        source: "houseiq_agent",
-                        originalQuestion:
-                            question.trim(),
-                    },
-
-                    client,
-                });
-
-            createdRecords.memories.push(
-                createdMemory
+                    questionVectorSql,
+                ]
             );
 
-            actionsTaken.push({
-                type: "memory_created",
-                recordId: createdMemory.id,
-                title: createdMemory.title,
-            });
-        }
+            relevantMemories = memoriesResult.rows;
 
 
-        // -------------------------------------------------
-        // 7. CREATE ISSUES
-        // -------------------------------------------------
+            // -------------------------------------------------
+            // 4. ASK THE HOUSEIQ AGENT WHAT TO DO
+            // -------------------------------------------------
 
-        for (
-            const issueInput of
-            agentResponse.issuesToCreate
-        ) {
-            const createdIssue =
-                await createIssueRecord({
-                    homeId,
+            agentResponse =
+                await generateHouseAgentResponse(
+                    question.trim(),
+                    relevantMemories
+                );
 
-                    title:
-                        issueInput.title,
 
-                    description:
-                        issueInput.description,
+            // -------------------------------------------------
+            // 5. START A DATABASE TRANSACTION
+            // -------------------------------------------------
+            //
+            // A transaction means all database actions succeed
+            // together or fail together.
+            //
+            // Without this, HouseIQ might create a memory and issue,
+            // fail while creating a project, and leave the database
+            // in a half-completed state.
+            //
+            client = await pool.connect();
 
-                    priority:
-                        issueInput.priority,
+            await client.query("BEGIN");
 
-                    category:
-                        issueInput.category,
 
-                    suspectedCause:
-                        issueInput.suspectedCause,
+            // This object contains the actual database records created
+            // during this run.
+            const createdRecords = {
+                memories: [],
+                issues: [],
+                projects: [],
+                assets: [],
+            };
 
-                    recommendedNextStep:
-                        issueInput.recommendedNextStep,
 
-                    client,
+            // This gives the frontend a simple human-readable list.
+            const actionsTaken = [];
+
+
+            // -------------------------------------------------
+            // 6. CREATE MEMORIES
+            // -------------------------------------------------
+
+            for (
+                const memoryInput of
+                agentResponse.memoriesToCreate
+            ) {
+                const createdMemory =
+                    await createMemoryRecord({
+                        homeId,
+
+                        title:
+                            memoryInput.title,
+
+                        category:
+                            memoryInput.category,
+
+                        content:
+                            memoryInput.content,
+
+                        importance:
+                            memoryInput.importance,
+
+                        metadata: {
+                            source: "houseiq_agent",
+                            originalQuestion:
+                                question.trim(),
+                        },
+
+                        client,
+                    });
+
+                createdRecords.memories.push(
+                    createdMemory
+                );
+
+                actionsTaken.push({
+                    type: "memory_created",
+                    recordId: createdMemory.id,
+                    title: createdMemory.title,
                 });
-
-            createdRecords.issues.push(
-                createdIssue
-            );
-
-            actionsTaken.push({
-                type: "issue_created",
-                recordId: createdIssue.id,
-                title: createdIssue.title,
-            });
-        }
+            }
 
 
-        // -------------------------------------------------
-        // 8. CREATE PROJECTS AND TASKS
-        // -------------------------------------------------
+            // -------------------------------------------------
+            // 7. CREATE ISSUES
+            // -------------------------------------------------
 
-        for (
-            const projectInput of
-            agentResponse.projectsToCreate
-        ) {
-            const createdProject =
-                await createProjectRecord({
-                    homeId,
+            for (
+                const issueInput of
+                agentResponse.issuesToCreate
+            ) {
+                const createdIssue =
+                    await createIssueRecord({
+                        homeId,
 
-                    title:
-                        projectInput.title,
+                        title:
+                            issueInput.title,
 
-                    description:
-                        projectInput.description,
+                        description:
+                            issueInput.description,
 
-                    priority:
-                        projectInput.priority,
+                        priority:
+                            issueInput.priority,
 
-                    estimatedCostLow:
-                        projectInput.estimatedCostLow,
+                        category:
+                            issueInput.category,
 
-                    estimatedCostHigh:
-                        projectInput.estimatedCostHigh,
+                        suspectedCause:
+                            issueInput.suspectedCause,
 
-                    diyDifficulty:
-                        projectInput.diyDifficulty,
+                        recommendedNextStep:
+                            issueInput.recommendedNextStep,
 
-                    safetyNotes:
-                        projectInput.safetyNotes,
+                        client,
+                    });
 
-                    tasks:
-                        projectInput.tasks,
+                createdRecords.issues.push(
+                    createdIssue
+                );
 
-                    client,
+                actionsTaken.push({
+                    type: "issue_created",
+                    recordId: createdIssue.id,
+                    title: createdIssue.title,
                 });
-
-            createdRecords.projects.push(
-                createdProject
-            );
-
-            actionsTaken.push({
-                type: "project_created",
-                recordId: createdProject.id,
-                title: createdProject.title,
-                taskCount:
-                    createdProject.tasks.length,
-            });
-        }
+            }
 
 
-        // -------------------------------------------------
-        // 9. CREATE ASSETS
-        // -------------------------------------------------
+            // -------------------------------------------------
+            // 8. CREATE PROJECTS AND TASKS
+            // -------------------------------------------------
 
-        for (
-            const assetInput of
-            agentResponse.assetsToCreate
-        ) {
-            const createdAsset =
-                await createAssetRecord({
-                    homeId,
+            for (
+                const projectInput of
+                agentResponse.projectsToCreate
+            ) {
+                const createdProject =
+                    await createProjectRecord({
+                        homeId,
 
-                    assetType:
-                        assetInput.assetType,
+                        title:
+                            projectInput.title,
 
-                    name:
-                        assetInput.name,
+                        description:
+                            projectInput.description,
 
-                    brand:
-                        assetInput.brand,
+                        priority:
+                            projectInput.priority,
 
-                    model:
-                        assetInput.model,
+                        estimatedCostLow:
+                            projectInput.estimatedCostLow,
 
-                    serialNumber:
-                        assetInput.serialNumber,
+                        estimatedCostHigh:
+                            projectInput.estimatedCostHigh,
 
-                    location:
-                        assetInput.location,
+                        diyDifficulty:
+                            projectInput.diyDifficulty,
 
-                    notes:
-                        assetInput.notes,
+                        safetyNotes:
+                            projectInput.safetyNotes,
 
-                    client,
+                        tasks:
+                            projectInput.tasks,
+
+                        client,
+                    });
+
+                createdRecords.projects.push(
+                    createdProject
+                );
+
+                actionsTaken.push({
+                    type: "project_created",
+                    recordId: createdProject.id,
+                    title: createdProject.title,
+                    taskCount:
+                        createdProject.tasks.length,
                 });
-
-            createdRecords.assets.push(
-                createdAsset
-            );
-
-            actionsTaken.push({
-                type: "asset_created",
-                recordId: createdAsset.id,
-                title: createdAsset.name,
-            });
-        }
+            }
 
 
-        // -------------------------------------------------
-        // 10. LOG THE COMPLETE AGENT RUN
-        // -------------------------------------------------
+            // -------------------------------------------------
+            // 9. CREATE ASSETS
+            // -------------------------------------------------
 
-        const agentRunResult =
-            await client.query(
-                `
+            for (
+                const assetInput of
+                agentResponse.assetsToCreate
+            ) {
+                const createdAsset =
+                    await createAssetRecord({
+                        homeId,
+
+                        assetType:
+                            assetInput.assetType,
+
+                        name:
+                            assetInput.name,
+
+                        brand:
+                            assetInput.brand,
+
+                        model:
+                            assetInput.model,
+
+                        serialNumber:
+                            assetInput.serialNumber,
+
+                        location:
+                            assetInput.location,
+
+                        notes:
+                            assetInput.notes,
+
+                        client,
+                    });
+
+                createdRecords.assets.push(
+                    createdAsset
+                );
+
+                actionsTaken.push({
+                    type: "asset_created",
+                    recordId: createdAsset.id,
+                    title: createdAsset.name,
+                });
+            }
+
+
+            // -------------------------------------------------
+            // 10. LOG THE COMPLETE AGENT RUN
+            // -------------------------------------------------
+
+            const agentRunResult =
+                await client.query(
+                    `
                 INSERT INTO agent_runs (
                     home_id,
                     user_question,
@@ -2223,96 +2497,96 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
                 )
                 RETURNING *
                 `,
-                [
-                    homeId,
-                    question.trim(),
+                    [
+                        homeId,
+                        question.trim(),
+                        agentResponse.answer,
+                        "completed",
+                        agentResponse.confidence,
+                        agentResponse.needsMoreInfo,
+
+                        JSON.stringify(
+                            agentResponse.clarifyingQuestions
+                        ),
+
+                        JSON.stringify(
+                            relevantMemories.map(
+                                (memory) => memory.id
+                            )
+                        ),
+
+                        JSON.stringify(actionsTaken),
+                    ]
+                );
+
+            const agentRun =
+                agentRunResult.rows[0];
+
+
+            // -------------------------------------------------
+            // 11. COMMIT THE TRANSACTION
+            // -------------------------------------------------
+
+            await client.query("COMMIT");
+
+
+            // -------------------------------------------------
+            // 12. RETURN EVERYTHING THE FRONTEND NEEDS
+            // -------------------------------------------------
+
+            return res.json({
+                question: question.trim(),
+
+                home: {
+                    id: home.id,
+                    name: home.name,
+                },
+
+                answer:
                     agentResponse.answer,
-                    "completed",
+
+                confidence:
                     agentResponse.confidence,
+
+                needsMoreInfo:
                     agentResponse.needsMoreInfo,
 
-                    JSON.stringify(
-                        agentResponse.clarifyingQuestions
-                    ),
+                clarifyingQuestions:
+                    agentResponse.clarifyingQuestions,
 
-                    JSON.stringify(
-                        relevantMemories.map(
-                            (memory) => memory.id
-                        )
-                    ),
+                actionsTaken,
 
-                    JSON.stringify(actionsTaken),
-                ]
+                createdRecords,
+
+                memoriesUsed:
+                    relevantMemories,
+
+                agentRunId:
+                    agentRun.id,
+            });
+        } catch (error) {
+            // If the transaction started, undo all pending writes.
+            if (client) {
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    console.error(
+                        "Failed to roll back transaction:",
+                        rollbackError
+                    );
+                }
+            }
+
+            console.error(
+                "Error running HouseIQ agent:",
+                error
             );
 
-        const agentRun =
-            agentRunResult.rows[0];
-
-
-        // -------------------------------------------------
-        // 11. COMMIT THE TRANSACTION
-        // -------------------------------------------------
-
-        await client.query("COMMIT");
-
-
-        // -------------------------------------------------
-        // 12. RETURN EVERYTHING THE FRONTEND NEEDS
-        // -------------------------------------------------
-
-        return res.json({
-            question: question.trim(),
-
-            home: {
-                id: home.id,
-                name: home.name,
-            },
-
-            answer:
-                agentResponse.answer,
-
-            confidence:
-                agentResponse.confidence,
-
-            needsMoreInfo:
-                agentResponse.needsMoreInfo,
-
-            clarifyingQuestions:
-                agentResponse.clarifyingQuestions,
-
-            actionsTaken,
-
-            createdRecords,
-
-            memoriesUsed:
-                relevantMemories,
-
-            agentRunId:
-                agentRun.id,
-        });
-    } catch (error) {
-        // If the transaction started, undo all pending writes.
-        if (client) {
+            // Log the failed run outside the rolled-back transaction
+            // so every interaction still leaves an agent_runs record.
             try {
-                await client.query("ROLLBACK");
-            } catch (rollbackError) {
-                console.error(
-                    "Failed to roll back transaction:",
-                    rollbackError
-                );
-            }
-        }
-
-        console.error(
-            "Error running HouseIQ agent:",
-            error
-        );
-
-        // Log the failed run outside the rolled-back transaction
-        // so every interaction still leaves an agent_runs record.
-        try {
-            await pool.query(
-                `
+                await pool.query(
+                    `
                 INSERT INTO agent_runs (
                     home_id,
                     user_question,
@@ -2336,45 +2610,45 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
                     $9::JSONB
                 )
                 `,
-                [
-                    homeId,
-                    question.trim(),
-                    agentResponse?.answer || null,
-                    "failed",
-                    agentResponse?.confidence || "low",
-                    agentResponse?.needsMoreInfo || false,
-                    JSON.stringify(
-                        agentResponse?.clarifyingQuestions || []
-                    ),
-                    JSON.stringify(
-                        relevantMemories.map(
-                            (memory) => memory.id
-                        )
-                    ),
-                    JSON.stringify([]),
-                ]
-            );
-        } catch (logError) {
-            console.error(
-                "Failed to log failed agent run:",
-                logError
-            );
-        }
+                    [
+                        homeId,
+                        question.trim(),
+                        agentResponse?.answer || null,
+                        "failed",
+                        agentResponse?.confidence || "low",
+                        agentResponse?.needsMoreInfo || false,
+                        JSON.stringify(
+                            agentResponse?.clarifyingQuestions || []
+                        ),
+                        JSON.stringify(
+                            relevantMemories.map(
+                                (memory) => memory.id
+                            )
+                        ),
+                        JSON.stringify([]),
+                    ]
+                );
+            } catch (logError) {
+                console.error(
+                    "Failed to log failed agent run:",
+                    logError
+                );
+            }
 
-        return res.status(500).json({
-            error: "HouseIQ could not process the request",
+            return res.status(500).json({
+                error: "HouseIQ could not process the request",
 
-            // This is useful during local development.
-            // You may remove details before production.
-            details: error.message,
-        });
-    } finally {
-        // Return the database connection to the pool.
-        if (client) {
-            client.release();
+                // This is useful during local development.
+                // You may remove details before production.
+                details: error.message,
+            });
+        } finally {
+            // Return the database connection to the pool.
+            if (client) {
+                client.release();
+            }
         }
-    }
-});
+    });
 
 // ---------------------------------------------------------
 // GLOBAL ERROR HANDLER
@@ -2452,8 +2726,19 @@ app.use((error, req, res, next) => {
     });
 });
 
+export { app, pool };
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-    console.log(`HouseIQ backend running on port ${PORT}`);
-});
+const isMainModule =
+    process.argv[1] &&
+    path.resolve(process.argv[1]) ===
+        path.resolve(fileURLToPath(import.meta.url));
+
+if (isMainModule) {
+    app.listen(PORT, () => {
+        console.log(
+            `HouseIQ backend running on port ${PORT}`
+        );
+    });
+}

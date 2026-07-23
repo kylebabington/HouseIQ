@@ -4,6 +4,9 @@
 CREATE TABLE IF NOT EXISTS homes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
+  -- Auth0 user subject (sub) that owns this home.
+  owner_auth0_id STRING NOT NULL,
+
   name STRING NOT NULL,
   year_built INT,
   notes STRING,
@@ -11,6 +14,12 @@ CREATE TABLE IF NOT EXISTS homes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Existing databases created before owner_auth0_id existed.
+ALTER TABLE homes ADD COLUMN IF NOT EXISTS owner_auth0_id STRING;
+
+CREATE INDEX IF NOT EXISTS homes_owner_auth0_id_idx
+  ON homes (owner_auth0_id);
 
 -- Appliances, systems, equipment, tools, vehicles, etc.
 CREATE TABLE IF NOT EXISTS home_assets (
