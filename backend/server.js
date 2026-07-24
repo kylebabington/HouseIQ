@@ -114,6 +114,224 @@ const pool = new Pool({
 });
 
 // ---------------------------------------------------------
+// UUID VALIDATION
+// ---------------------------------------------------------
+//
+// HouseIQ uses UUID primary keys for homes, documents,
+// memories, issues, projects, assets, and other records.
+//
+// Validating URL parameters before sending them to
+// CockroachDB prevents malformed IDs from producing
+// avoidable database errors.
+//
+function isValidUuid(value) {
+    if (
+        typeof value !== "string" ||
+        !value.trim()
+    ) {
+        return false;
+    }
+
+    // Accepts standard UUID versions 1 through 5.
+    //
+    // Example:
+    //
+    // 550e8400-e29b-41d4-a716-446655440000
+    //
+    const uuidPattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    return uuidPattern.test(
+        value.trim()
+    );
+}
+
+// ---------------------------------------------------------
+// HOME OWNERSHIP AUTHORIZATION
+// ---------------------------------------------------------
+//
+// Confirms the authenticated Auth0 user owns the home
+// identified by :homeId before a route handler runs.
+//
+// Missing or other-user homes both return 404 so home
+// existence is not leaked across accounts.
+//
+async function requireHomeOwnership(
+    req,
+    res,
+    next
+) {
+    try {
+        const { homeId } = req.params;
+
+        if (!isValidUuid(homeId)) {
+            return res.status(400).json({
+                error:
+                    "A valid home ID is required",
+            });
+        }
+
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        const result = await pool.query(
+            `
+            SELECT
+                id,
+                owner_auth0_id
+            FROM homes
+            WHERE id = $1
+              AND owner_auth0_id = $2
+            LIMIT 1
+            `,
+            [homeId, ownerAuth0Id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error:
+                    "Home not found",
+            });
+        }
+
+        req.authorizedHomeId =
+            result.rows[0].id;
+
+        return next();
+    } catch (error) {
+        console.error(
+            "Home ownership check failed:",
+            error
+        );
+
+        return res.status(500).json({
+            error:
+                "Could not verify home access",
+        });
+    }
+}
+
+// ---------------------------------------------------------
+// DOCUMENT OWNERSHIP AUTHORIZATION
+// ---------------------------------------------------------
+//
+// Document routes use:
+//
+// :documentId
+//
+// rather than:
+//
+// :homeId
+//
+// Therefore, we cannot check home ownership directly from
+// the URL. We must:
+//
+// 1. Find the document.
+// 2. Join it to its home.
+// 3. Confirm that home belongs to the authenticated user.
+//
+// This middleware must run after requireAuth.
+//
+async function requireDocumentOwnership(
+    req,
+    res,
+    next
+) {
+    try {
+        const { documentId } =
+            req.params;
+
+        // Reject malformed IDs before querying CockroachDB.
+        if (!isValidUuid(documentId)) {
+            return res.status(400).json({
+                error:
+                    "A valid document ID is required",
+            });
+        }
+
+        // Read the stable Auth0 subject from the already
+        // validated access token.
+        //
+        // Example:
+        //
+        // google-oauth2|111906979750891104809
+        //
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        // Return the document only when its parent home
+        // belongs to the authenticated user.
+        //
+        const result =
+            await pool.query(
+                `
+                SELECT
+                    documents.id,
+                    documents.home_id,
+                    documents.document_type,
+                    documents.file_name,
+                    documents.source_url,
+                    documents.metadata,
+                    documents.created_at,
+                    documents.updated_at
+
+                FROM documents
+
+                INNER JOIN homes
+                    ON homes.id =
+                        documents.home_id
+
+                WHERE documents.id = $1
+                  AND homes.owner_auth0_id = $2
+
+                LIMIT 1
+                `,
+                [
+                    documentId,
+                    ownerAuth0Id,
+                ]
+            );
+
+        // Use the same response whether:
+        //
+        // - the document does not exist
+        // - its home does not exist
+        // - it belongs to another user
+        //
+        // This prevents HouseIQ from revealing whether
+        // another user's private document exists.
+        //
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error:
+                    "Document not found",
+            });
+        }
+
+        // Save the verified document on the request.
+        //
+        // The download and delete handlers can use this
+        // object instead of performing another unrestricted
+        // document lookup.
+        //
+        req.authorizedDocument =
+            result.rows[0];
+
+        return next();
+    } catch (error) {
+        console.error(
+            "Document ownership check failed:",
+            error
+        );
+
+        return res.status(500).json({
+            error:
+                "Could not verify document access",
+        });
+    }
+}
+
+// ---------------------------------------------------------
 // DATABASE RECORD HELPERS
 // ---------------------------------------------------------
 
@@ -583,49 +801,61 @@ app.get(
 );
 
 
-// ---------------------------------------------------------
-// TEST DATABASE CONNECTION
-// ---------------------------------------------------------
-//
-// This route is still public for now.
-//
-app.get("/api/db-test", async (req, res) => {
-    try {
-        const result = await pool.query("SELECT now() AS current_time;");
 
-        res.json({
-            message: "Connected to CockroachDB Cloud",
-            currentTime: result.rows[0].current_time,
-        });
-    } catch (error) {
-        console.error("Database test failed:", error);
-
-        res.status(500).json({
-            error: "Database connection failed",
-            details: error.message,
-        });
-    }
-});
-
-// Create a new home
-app.post("/api/homes", async (req, res) => {
+// Create a new home owned by the authenticated Auth0 user.
+app.post(
+    "/api/homes",
+    requireAuth,
+    async (req, res) => {
     try {
         const { name, yearBuilt, notes } = req.body;
 
-        if (!name) {
+        const safeName =
+            typeof name === "string"
+                ? name.trim()
+                : "";
+
+        if (!safeName) {
             return res.status(400).json({
                 error: "Home name is required",
             });
         }
 
-        const result = await pool.query(
-            `
-      INSERT INTO homes (name, year_built, notes)
-      VALUES ($1, $2, $3)
-      RETURNING *
-      `,
-            [name, yearBuilt || null, notes || ""]
-        );
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        const result =
+            await pool.query(
+                `
+                INSERT INTO homes (
+                    owner_auth0_id,
+                    name,
+                    year_built,
+                    notes
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4
+                )
+                RETURNING
+                    id,
+                    name,
+                    year_built,
+                    notes,
+                    created_at,
+                    updated_at
+                `,
+                [
+                    ownerAuth0Id,
+                    safeName,
+                    yearBuilt || null,
+                    typeof notes === "string"
+                        ? notes.trim()
+                        : "",
+                ]
+            );
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -636,14 +866,30 @@ app.post("/api/homes", async (req, res) => {
     }
 });
 
-// Get all homes
-app.get("/api/homes", async (req, res) => {
+// Get homes owned by the authenticated Auth0 user.
+app.get(
+    "/api/homes",
+    requireAuth,
+    async (req, res) => {
     try {
-        const result = await pool.query(`
-      SELECT *
-      FROM homes
-      ORDER BY created_at DESC
-    `);
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        const result = await pool.query(
+            `
+            SELECT
+                id,
+                name,
+                year_built,
+                notes,
+                created_at,
+                updated_at
+            FROM homes
+            WHERE owner_auth0_id = $1
+            ORDER BY created_at DESC
+            `,
+            [ownerAuth0Id]
+        );
 
         res.json(result.rows);
     } catch (error) {
@@ -657,9 +903,13 @@ app.get("/api/homes", async (req, res) => {
 // Add a memory to a home manually.
 // Later, most memories will be created automatically by the agent,
 // but keeping this route is useful for testing and power users.
-app.post("/api/homes/:homeId/memories", async (req, res) => {
+app.post(
+    "/api/homes/:homeId/memories",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const {
             title,
@@ -692,15 +942,18 @@ app.post("/api/homes/:homeId/memories", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to create memory",
-            details: error.message,
         });
     }
 });
 
 // Get memories for one home
-app.get("/api/homes/:homeId/memories", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/memories",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const result = await pool.query(
             `
@@ -722,9 +975,13 @@ app.get("/api/homes/:homeId/memories", async (req, res) => {
 });
 
 // Semantic memory search
-app.post("/api/homes/:homeId/memory-search", async (req, res) => {
+app.post(
+    "/api/homes/:homeId/memory-search",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
         const { query } = req.body;
 
         if (!query) {
@@ -770,7 +1027,6 @@ app.post("/api/homes/:homeId/memory-search", async (req, res) => {
 
         res.status(500).json({
             error: "Memory search failed",
-            details: error.message,
         });
     }
 });
@@ -783,9 +1039,13 @@ app.post("/api/homes/:homeId/memory-search", async (req, res) => {
 //
 // The frontend uses this route to populate the Issues tab.
 //
-app.get("/api/homes/:homeId/issues", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/issues",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const result = await pool.query(
             `
@@ -814,7 +1074,6 @@ app.get("/api/homes/:homeId/issues", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to fetch home issues",
-            details: error.message,
         });
     }
 });
@@ -828,9 +1087,13 @@ app.get("/api/homes/:homeId/issues", async (req, res) => {
 // We retrieve the projects first, then retrieve all tasks
 // belonging to those projects.
 //
-app.get("/api/homes/:homeId/projects", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/projects",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         // Get every project for this home.
         const projectsResult = await pool.query(
@@ -899,7 +1162,6 @@ app.get("/api/homes/:homeId/projects", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to fetch home projects",
-            details: error.message,
         });
     }
 });
@@ -911,9 +1173,13 @@ app.get("/api/homes/:homeId/projects", async (req, res) => {
 // Returns appliances, systems, tools, and equipment
 // connected to one home.
 //
-app.get("/api/homes/:homeId/assets", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/assets",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const result = await pool.query(
             `
@@ -934,7 +1200,6 @@ app.get("/api/homes/:homeId/assets", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to fetch home assets",
-            details: error.message,
         });
     }
 });
@@ -956,9 +1221,21 @@ app.get("/api/homes/:homeId/assets", async (req, res) => {
 
 app.get(
     "/api/homes/:homeId/documents",
+
+    // Confirm who is making the request.
+    requireAuth,
+
+    // Confirm that this home belongs to that user.
+    //
+    // Listing by home_id is safe only after this check.
+    requireHomeOwnership,
+
     async (req, res) => {
         try {
-            const { homeId } = req.params;
+            // Prefer the home ID already verified by
+            // requireHomeOwnership over the raw URL param.
+            const homeId =
+                req.authorizedHomeId;
 
             const result = await pool.query(
                 `
@@ -988,7 +1265,6 @@ app.get(
 
             res.status(500).json({
                 error: "Failed to fetch documents",
-                details: error.message,
             });
         }
     }
@@ -998,62 +1274,46 @@ app.get(
 // CREATE A TEMPORARY DOCUMENT DOWNLOAD URL
 // ---------------------------------------------------------
 //
-// The original file remains private in S3.
+// The original file remains private in Amazon S3.
 //
-// This route creates a temporary URL that allows the browser
-// to open one specific document for five minutes.
+// This route:
+//
+// 1. Requires a valid Auth0 access token.
+// 2. Confirms that the document's home belongs to the user.
+// 3. Reads the S3 object key from the verified document.
+// 4. Generates a signed URL that expires after five minutes.
 //
 app.get(
     "/api/documents/:documentId/download-url",
 
+    // Confirm who is making the request.
+    requireAuth,
+
+    // Confirm that the requested document belongs to a home
+    // owned by that authenticated user.
+    requireDocumentOwnership,
+
     async (req, res) => {
         try {
-            const { documentId } =
-                req.params;
-
-
-            // -------------------------------------------------
-            // 1. FIND THE DOCUMENT
-            // -------------------------------------------------
-
-            const documentResult =
-                await pool.query(
-                    `
-                    SELECT
-                        id,
-                        home_id,
-                        file_name,
-                        source_url,
-                        metadata
-                    FROM documents
-                    WHERE id = $1
-                    `,
-                    [documentId]
-                );
-
-            if (
-                documentResult.rows.length === 0
-            ) {
-                return res.status(404).json({
-                    error:
-                        "Document not found",
-                });
-            }
-
+            // requireDocumentOwnership already retrieved and
+            // authorized this document.
+            //
             const document =
-                documentResult.rows[0];
+                req.authorizedDocument;
 
             const metadata =
                 document.metadata || {};
 
-
             // -------------------------------------------------
-            // 2. GET THE S3 OBJECT KEY
+            // GET THE PRIVATE S3 OBJECT KEY
             // -------------------------------------------------
 
             const s3Key =
                 metadata.s3Key;
 
+            // Older HouseIQ documents may have been created
+            // before original-file S3 storage was enabled.
+            //
             if (!s3Key) {
                 return res.status(409).json({
                     error:
@@ -1064,9 +1324,8 @@ app.get(
                 });
             }
 
-
             // -------------------------------------------------
-            // 3. ASK AWS FOR A FIVE-MINUTE URL
+            // CREATE A FIVE-MINUTE SIGNED URL
             // -------------------------------------------------
 
             const signedDownload =
@@ -1081,9 +1340,8 @@ app.get(
                         300,
                 });
 
-
             // -------------------------------------------------
-            // 4. RETURN THE TEMPORARY URL
+            // RETURN THE TEMPORARY URL
             // -------------------------------------------------
 
             return res.json({
@@ -1109,9 +1367,6 @@ app.get(
             return res.status(500).json({
                 error:
                     "Could not open the original document",
-
-                details:
-                    error.message,
             });
         }
     }
@@ -1120,57 +1375,40 @@ app.get(
 // ---------------------------------------------------------
 // DELETE A DOCUMENT AND ITS ORIGINAL S3 OBJECT
 // ---------------------------------------------------------
-
+//
+// Deletion requires:
+//
+// 1. A valid Auth0 access token.
+// 2. Ownership of the document's parent home.
+// 3. Successful removal of the private S3 object when one
+//    exists.
+// 4. Removal of the CockroachDB document record.
+//
 app.delete(
     "/api/documents/:documentId",
 
+    // Validate the Auth0 access token.
+    requireAuth,
+
+    // Confirm the document belongs to one of the user's homes.
+    requireDocumentOwnership,
+
     async (req, res) => {
-        const { documentId } =
-            req.params;
+        const document =
+            req.authorizedDocument;
 
         let client;
 
         try {
-            // -------------------------------------------------
-            // 1. FIND THE DOCUMENT
-            // -------------------------------------------------
-
-            const documentResult =
-                await pool.query(
-                    `
-                    SELECT
-                        id,
-                        home_id,
-                        file_name,
-                        metadata
-                    FROM documents
-                    WHERE id = $1
-                    `,
-                    [documentId]
-                );
-
-            if (
-                documentResult.rows.length === 0
-            ) {
-                return res.status(404).json({
-                    error:
-                        "Document not found",
-                });
-            }
-
-            const document =
-                documentResult.rows[0];
-
             const s3Key =
                 document.metadata?.s3Key ||
                 null;
 
-
             // -------------------------------------------------
-            // 2. DELETE THE ORIGINAL FILE FROM S3
+            // DELETE THE ORIGINAL PRIVATE FILE FROM S3
             // -------------------------------------------------
             //
-            // Older documents might not have an S3 key.
+            // Older documents may not have an S3 object key.
             //
             if (s3Key) {
                 await deleteDocumentFromS3({
@@ -1179,9 +1417,8 @@ app.delete(
                 });
             }
 
-
             // -------------------------------------------------
-            // 3. DELETE THE DATABASE RECORD
+            // DELETE THE COCKROACHDB RECORD
             // -------------------------------------------------
 
             client =
@@ -1191,21 +1428,56 @@ app.delete(
                 "BEGIN"
             );
 
-            await client.query(
-                `
-                DELETE FROM documents
-                WHERE id = $1
-                `,
-                [documentId]
-            );
+            // Include both the document ID and the authorized
+            // home ID as a defense-in-depth check.
+            //
+            // Even though the middleware already verified
+            // ownership, this ensures the deletion remains
+            // scoped to the same authorized parent home.
+            //
+            const deleteResult =
+                await client.query(
+                    `
+                    DELETE FROM documents
+                    WHERE id = $1
+                      AND home_id = $2
+                    RETURNING
+                        id,
+                        file_name
+                    `,
+                    [
+                        document.id,
+                        document.home_id,
+                    ]
+                );
+
+            // This would be unusual because authorization
+            // already found the record. It could happen if the
+            // document was deleted by another request between
+            // the ownership check and this query.
+            //
+            if (
+                deleteResult.rows.length === 0
+            ) {
+                await client.query(
+                    "ROLLBACK"
+                );
+
+                return res.status(404).json({
+                    error:
+                        "Document not found",
+                });
+            }
 
             await client.query(
                 "COMMIT"
             );
 
+            const deletedDocument =
+                deleteResult.rows[0];
 
             // -------------------------------------------------
-            // 4. RETURN SUCCESS
+            // RETURN SUCCESS
             // -------------------------------------------------
 
             return res.json({
@@ -1213,10 +1485,10 @@ app.delete(
                     "Document deleted successfully",
 
                 documentId:
-                    document.id,
+                    deletedDocument.id,
 
                 fileName:
-                    document.file_name,
+                    deletedDocument.file_name,
             });
         } catch (error) {
             if (client) {
@@ -1240,9 +1512,6 @@ app.delete(
             return res.status(500).json({
                 error:
                     "Document could not be deleted",
-
-                details:
-                    error.message,
             });
         } finally {
             if (client) {
@@ -1258,8 +1527,8 @@ app.delete(
 //
 // This route now performs the complete document workflow:
 //
-// 1. Receive the file with Multer.
-// 2. Confirm the home exists.
+// 1. Confirm Auth0 identity and home ownership.
+// 2. Receive the file with Multer.
 // 3. Extract text from the PDF or text file.
 // 4. Analyze the text with HouseIQ.
 // 5. Upload the original file to private Amazon S3.
@@ -1269,6 +1538,13 @@ app.delete(
 app.post(
     "/api/homes/:homeId/documents/upload",
 
+    // Confirm who is making the request.
+    requireAuth,
+
+    // Confirm that this home belongs to that user before
+    // accepting and buffering the uploaded file.
+    requireHomeOwnership,
+
     // This field name must match the browser FormData field:
     //
     // formData.append("document", selectedFile)
@@ -1276,7 +1552,10 @@ app.post(
     upload.single("document"),
 
     async (req, res) => {
-        const { homeId } = req.params;
+        // Prefer the home ID already verified by
+        // requireHomeOwnership over the raw URL param.
+        const homeId =
+            req.authorizedHomeId;
 
         const documentType =
             req.body.documentType?.trim() ||
@@ -1306,33 +1585,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 2. CONFIRM THAT THE HOME EXISTS
-            // -------------------------------------------------
-
-            const homeResult =
-                await pool.query(
-                    `
-                    SELECT
-                        id,
-                        name
-                    FROM homes
-                    WHERE id = $1
-                    `,
-                    [homeId]
-                );
-
-            if (
-                homeResult.rows.length === 0
-            ) {
-                return res.status(404).json({
-                    error:
-                        "Home not found",
-                });
-            }
-
-
-            // -------------------------------------------------
-            // 3. EXTRACT READABLE TEXT
+            // 2. EXTRACT READABLE TEXT
             // -------------------------------------------------
             //
             // We do this before uploading to S3.
@@ -1348,7 +1601,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 4. ANALYZE THE DOCUMENT WITH HOUSEIQ
+            // 3. ANALYZE THE DOCUMENT WITH HOUSEIQ
             // -------------------------------------------------
 
             const analysis =
@@ -1363,7 +1616,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 5. UPLOAD THE ORIGINAL FILE TO AMAZON S3
+            // 4. UPLOAD THE ORIGINAL FILE TO AMAZON S3
             // -------------------------------------------------
 
             uploadedS3Object =
@@ -1384,7 +1637,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 6. BEGIN THE COCKROACHDB TRANSACTION
+            // 5. BEGIN THE COCKROACHDB TRANSACTION
             // -------------------------------------------------
 
             client =
@@ -1396,7 +1649,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 7. SAVE THE DOCUMENT RECORD
+            // 6. SAVE THE DOCUMENT RECORD
             // -------------------------------------------------
 
             const documentResult =
@@ -1478,7 +1731,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 8. PREPARE RESPONSE COLLECTIONS
+            // 7. PREPARE RESPONSE COLLECTIONS
             // -------------------------------------------------
 
             const createdRecords = {
@@ -1504,7 +1757,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 9. CREATE MEMORIES FOUND IN THE DOCUMENT
+            // 8. CREATE MEMORIES FOUND IN THE DOCUMENT
             // -------------------------------------------------
 
             for (
@@ -1564,7 +1817,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 10. CREATE ISSUES FOUND IN THE DOCUMENT
+            // 9. CREATE ISSUES FOUND IN THE DOCUMENT
             // -------------------------------------------------
 
             for (
@@ -1614,7 +1867,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 11. CREATE PROJECTS AND TASKS
+            // 10. CREATE PROJECTS AND TASKS
             // -------------------------------------------------
 
             for (
@@ -1677,7 +1930,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 12. CREATE ASSETS FOUND IN THE DOCUMENT
+            // 11. CREATE ASSETS FOUND IN THE DOCUMENT
             // -------------------------------------------------
 
             for (
@@ -1730,7 +1983,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 13. COMMIT THE DATABASE TRANSACTION
+            // 12. COMMIT THE DATABASE TRANSACTION
             // -------------------------------------------------
 
             await client.query(
@@ -1739,7 +1992,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 14. RETURN THE SUCCESS RESPONSE
+            // 13. RETURN THE SUCCESS RESPONSE
             // -------------------------------------------------
 
             return res.status(201).json({
@@ -1783,7 +2036,7 @@ app.post(
             });
         } catch (error) {
             // -------------------------------------------------
-            // 15. ROLL BACK COCKROACHDB
+            // 14. ROLL BACK COCKROACHDB
             // -------------------------------------------------
 
             if (client) {
@@ -1801,7 +2054,7 @@ app.post(
 
 
             // -------------------------------------------------
-            // 16. CLEAN UP AN ORPHANED S3 FILE
+            // 15. CLEAN UP AN ORPHANED S3 FILE
             // -------------------------------------------------
             //
             // Imagine this sequence:
@@ -1855,13 +2108,20 @@ app.post(
                         ? 400
                         : 500
                 )
-                .json({
-                    error:
-                        "Document could not be processed",
+                .json(
+                    isClientError
+                        ? {
+                              error:
+                                  "Document could not be processed",
 
-                    details:
-                        error.message,
-                });
+                              details:
+                                  error.message,
+                          }
+                        : {
+                              error:
+                                  "Document could not be processed",
+                          }
+                );
         } finally {
             // Return the connection to the database pool.
             if (client) {
@@ -1876,8 +2136,12 @@ app.post(
 // HOUSEIQ AGENT ENDPOINT
 // ---------------------------------------------------------
 
-app.post("/api/homes/:homeId/ask", async (req, res) => {
-    const { homeId } = req.params;
+app.post(
+    "/api/homes/:homeId/ask",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
+    const homeId = req.authorizedHomeId;
     const { question } = req.body;
 
     // Validate before doing any expensive AI work.
@@ -1896,9 +2160,13 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
 
     try {
         // -------------------------------------------------
-        // 1. CONFIRM THAT THE HOME EXISTS
+        // 1. LOAD THE AUTHORIZED HOME PROFILE
         // -------------------------------------------------
-
+        //
+        // Ownership was already verified by
+        // requireHomeOwnership. Load the remaining profile
+        // fields needed by the agent.
+        //
         const homeResult = await pool.query(
             `
             SELECT id, name, year_built, notes
@@ -2363,10 +2631,6 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
 
         return res.status(500).json({
             error: "HouseIQ could not process the request",
-
-            // This is useful during local development.
-            // You may remove details before production.
-            details: error.message,
         });
     } finally {
         // Return the database connection to the pool.
@@ -2400,9 +2664,6 @@ app.use((error, req, res, next) => {
         return res.status(400).json({
             error:
                 "The file upload could not be processed",
-
-            details:
-                error.message,
         });
     }
 
@@ -2416,7 +2677,7 @@ app.use((error, req, res, next) => {
                 "Unsupported document type",
 
             details:
-                error.message,
+                "Only PDF and plain-text (.txt) documents are supported.",
         });
     }
 
@@ -2434,10 +2695,6 @@ app.use((error, req, res, next) => {
         ).json({
             error:
                 "Authentication required",
-
-            details:
-                error.message ||
-                "Missing or invalid access token",
         });
     }
 
