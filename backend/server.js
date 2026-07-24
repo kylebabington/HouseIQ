@@ -801,49 +801,61 @@ app.get(
 );
 
 
-// ---------------------------------------------------------
-// TEST DATABASE CONNECTION
-// ---------------------------------------------------------
-//
-// This route is still public for now.
-//
-app.get("/api/db-test", async (req, res) => {
-    try {
-        const result = await pool.query("SELECT now() AS current_time;");
 
-        res.json({
-            message: "Connected to CockroachDB Cloud",
-            currentTime: result.rows[0].current_time,
-        });
-    } catch (error) {
-        console.error("Database test failed:", error);
-
-        res.status(500).json({
-            error: "Database connection failed",
-            details: error.message,
-        });
-    }
-});
-
-// Create a new home
-app.post("/api/homes", async (req, res) => {
+// Create a new home owned by the authenticated Auth0 user.
+app.post(
+    "/api/homes",
+    requireAuth,
+    async (req, res) => {
     try {
         const { name, yearBuilt, notes } = req.body;
 
-        if (!name) {
+        const safeName =
+            typeof name === "string"
+                ? name.trim()
+                : "";
+
+        if (!safeName) {
             return res.status(400).json({
                 error: "Home name is required",
             });
         }
 
-        const result = await pool.query(
-            `
-      INSERT INTO homes (name, year_built, notes)
-      VALUES ($1, $2, $3)
-      RETURNING *
-      `,
-            [name, yearBuilt || null, notes || ""]
-        );
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        const result =
+            await pool.query(
+                `
+                INSERT INTO homes (
+                    owner_auth0_id,
+                    name,
+                    year_built,
+                    notes
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4
+                )
+                RETURNING
+                    id,
+                    name,
+                    year_built,
+                    notes,
+                    created_at,
+                    updated_at
+                `,
+                [
+                    ownerAuth0Id,
+                    safeName,
+                    yearBuilt || null,
+                    typeof notes === "string"
+                        ? notes.trim()
+                        : "",
+                ]
+            );
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -854,14 +866,30 @@ app.post("/api/homes", async (req, res) => {
     }
 });
 
-// Get all homes
-app.get("/api/homes", async (req, res) => {
+// Get homes owned by the authenticated Auth0 user.
+app.get(
+    "/api/homes",
+    requireAuth,
+    async (req, res) => {
     try {
-        const result = await pool.query(`
-      SELECT *
-      FROM homes
-      ORDER BY created_at DESC
-    `);
+        const ownerAuth0Id =
+            getAuthenticatedUserId(req);
+
+        const result = await pool.query(
+            `
+            SELECT
+                id,
+                name,
+                year_built,
+                notes,
+                created_at,
+                updated_at
+            FROM homes
+            WHERE owner_auth0_id = $1
+            ORDER BY created_at DESC
+            `,
+            [ownerAuth0Id]
+        );
 
         res.json(result.rows);
     } catch (error) {
@@ -875,9 +903,13 @@ app.get("/api/homes", async (req, res) => {
 // Add a memory to a home manually.
 // Later, most memories will be created automatically by the agent,
 // but keeping this route is useful for testing and power users.
-app.post("/api/homes/:homeId/memories", async (req, res) => {
+app.post(
+    "/api/homes/:homeId/memories",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const {
             title,
@@ -910,15 +942,18 @@ app.post("/api/homes/:homeId/memories", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to create memory",
-            details: error.message,
         });
     }
 });
 
 // Get memories for one home
-app.get("/api/homes/:homeId/memories", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/memories",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const result = await pool.query(
             `
@@ -940,9 +975,13 @@ app.get("/api/homes/:homeId/memories", async (req, res) => {
 });
 
 // Semantic memory search
-app.post("/api/homes/:homeId/memory-search", async (req, res) => {
+app.post(
+    "/api/homes/:homeId/memory-search",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
         const { query } = req.body;
 
         if (!query) {
@@ -988,7 +1027,6 @@ app.post("/api/homes/:homeId/memory-search", async (req, res) => {
 
         res.status(500).json({
             error: "Memory search failed",
-            details: error.message,
         });
     }
 });
@@ -1001,9 +1039,13 @@ app.post("/api/homes/:homeId/memory-search", async (req, res) => {
 //
 // The frontend uses this route to populate the Issues tab.
 //
-app.get("/api/homes/:homeId/issues", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/issues",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const result = await pool.query(
             `
@@ -1032,7 +1074,6 @@ app.get("/api/homes/:homeId/issues", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to fetch home issues",
-            details: error.message,
         });
     }
 });
@@ -1046,9 +1087,13 @@ app.get("/api/homes/:homeId/issues", async (req, res) => {
 // We retrieve the projects first, then retrieve all tasks
 // belonging to those projects.
 //
-app.get("/api/homes/:homeId/projects", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/projects",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         // Get every project for this home.
         const projectsResult = await pool.query(
@@ -1117,7 +1162,6 @@ app.get("/api/homes/:homeId/projects", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to fetch home projects",
-            details: error.message,
         });
     }
 });
@@ -1129,9 +1173,13 @@ app.get("/api/homes/:homeId/projects", async (req, res) => {
 // Returns appliances, systems, tools, and equipment
 // connected to one home.
 //
-app.get("/api/homes/:homeId/assets", async (req, res) => {
+app.get(
+    "/api/homes/:homeId/assets",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
     try {
-        const { homeId } = req.params;
+        const homeId = req.authorizedHomeId;
 
         const result = await pool.query(
             `
@@ -1152,7 +1200,6 @@ app.get("/api/homes/:homeId/assets", async (req, res) => {
 
         res.status(500).json({
             error: "Failed to fetch home assets",
-            details: error.message,
         });
     }
 });
@@ -1218,7 +1265,6 @@ app.get(
 
             res.status(500).json({
                 error: "Failed to fetch documents",
-                details: error.message,
             });
         }
     }
@@ -1321,9 +1367,6 @@ app.get(
             return res.status(500).json({
                 error:
                     "Could not open the original document",
-
-                details:
-                    error.message,
             });
         }
     }
@@ -1469,9 +1512,6 @@ app.delete(
             return res.status(500).json({
                 error:
                     "Document could not be deleted",
-
-                details:
-                    error.message,
             });
         } finally {
             if (client) {
@@ -2068,13 +2108,20 @@ app.post(
                         ? 400
                         : 500
                 )
-                .json({
-                    error:
-                        "Document could not be processed",
+                .json(
+                    isClientError
+                        ? {
+                              error:
+                                  "Document could not be processed",
 
-                    details:
-                        error.message,
-                });
+                              details:
+                                  error.message,
+                          }
+                        : {
+                              error:
+                                  "Document could not be processed",
+                          }
+                );
         } finally {
             // Return the connection to the database pool.
             if (client) {
@@ -2089,8 +2136,12 @@ app.post(
 // HOUSEIQ AGENT ENDPOINT
 // ---------------------------------------------------------
 
-app.post("/api/homes/:homeId/ask", async (req, res) => {
-    const { homeId } = req.params;
+app.post(
+    "/api/homes/:homeId/ask",
+    requireAuth,
+    requireHomeOwnership,
+    async (req, res) => {
+    const homeId = req.authorizedHomeId;
     const { question } = req.body;
 
     // Validate before doing any expensive AI work.
@@ -2109,9 +2160,13 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
 
     try {
         // -------------------------------------------------
-        // 1. CONFIRM THAT THE HOME EXISTS
+        // 1. LOAD THE AUTHORIZED HOME PROFILE
         // -------------------------------------------------
-
+        //
+        // Ownership was already verified by
+        // requireHomeOwnership. Load the remaining profile
+        // fields needed by the agent.
+        //
         const homeResult = await pool.query(
             `
             SELECT id, name, year_built, notes
@@ -2576,10 +2631,6 @@ app.post("/api/homes/:homeId/ask", async (req, res) => {
 
         return res.status(500).json({
             error: "HouseIQ could not process the request",
-
-            // This is useful during local development.
-            // You may remove details before production.
-            details: error.message,
         });
     } finally {
         // Return the database connection to the pool.
@@ -2613,9 +2664,6 @@ app.use((error, req, res, next) => {
         return res.status(400).json({
             error:
                 "The file upload could not be processed",
-
-            details:
-                error.message,
         });
     }
 
@@ -2629,7 +2677,7 @@ app.use((error, req, res, next) => {
                 "Unsupported document type",
 
             details:
-                error.message,
+                "Only PDF and plain-text (.txt) documents are supported.",
         });
     }
 
@@ -2647,10 +2695,6 @@ app.use((error, req, res, next) => {
         ).json({
             error:
                 "Authentication required",
-
-            details:
-                error.message ||
-                "Missing or invalid access token",
         });
     }
 

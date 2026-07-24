@@ -54,31 +54,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "GET /api/db-test — Database health",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/db-test",
-            "description": "Confirms CockroachDB connectivity."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', function () {",
-                  "  pm.response.to.have.status(200);",
-                  "});"
-                ]
-              }
-            }
-          ]
         }
       ]
     },
