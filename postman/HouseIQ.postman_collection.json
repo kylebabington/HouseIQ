@@ -1,0 +1,923 @@
+{
+  "info": {
+    "_postman_id": "houseiq-api-collection",
+    "name": "HouseIQ API",
+    "description": "Full HouseIQ backend collection for local development.\n\n## Setup\n1. Import `HouseIQ.postman_collection.json` and `HouseIQ.local.postman_environment.json`.\n2. Select the **HouseIQ Local** environment.\n3. Ensure Auth0 test credentials are in the environment (`auth0Domain`, `auth0ClientId`, `auth0ClientSecret`, user A/B username+password).\n   These mirror `AUTH0_TEST_*` from `backend/.env` (Resource Owner Password grant).\n4. Ensure the backend is running on `http://localhost:5000`.\n\n## Auth (automatic)\nCollection pre-request scripts fetch/refresh `accessToken` and `accessTokenUserB` via Auth0 password-realm grant.\nTokens are cached until near expiry — you should not need to paste Bearer tokens manually.\n\n## IDs (automatic where possible)\n- `GET /api/homes` / `POST /api/homes` set `homeId`\n- `GET/POST documents` set `ownedDocumentId` / `deletableDocumentId`\n- Part 19 delete sets `deletedDocumentId`\n- `userBDocumentId` still needs a document owned by User B (upload while using User B, or set once)\n\n## Document ownership suite\nRun folder **07 Document Ownership (Parts 15-19)** after `homeId` + document ids exist.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "item": [
+        {
+          "name": "GET / — Backend health",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/",
+            "description": "Confirms the Express server is reachable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Reports backend is running', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.include('HouseIQ backend is running');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/db-test — Database health",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/db-test",
+            "description": "Confirms CockroachDB connectivity."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Auth",
+      "item": [
+        {
+          "name": "GET /api/auth/me — Current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Requires a valid Auth0 Bearer token. Returns the authenticated Auth0 user id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('User is authenticated', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.authenticated).to.eql(true);",
+                  "  pm.expect(body.auth0UserId).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/auth/me — Missing token (401)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Confirms requireAuth rejects unauthenticated calls."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Homes",
+      "item": [
+        {
+          "name": "GET /api/homes — List homes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes",
+            "description": "Lists homes. After a successful response, copies the first home id into `homeId` when that variable is empty."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const homes = pm.response.json();",
+                  "pm.test('Returns an array', function () {",
+                  "  pm.expect(homes).to.be.an('array');",
+                  "});",
+                  "",
+                  "if (Array.isArray(homes) && homes.length > 0 && !pm.environment.get('homeId')) {",
+                  "  pm.environment.set('homeId', homes[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/homes — Create home",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Test Home\",\n  \"yearBuilt\": 1998,\n  \"notes\": \"Created from the HouseIQ Postman collection\"\n}"
+            },
+            "url": "{{baseUrl}}/api/homes",
+            "description": "Creates a home and stores its id in `homeId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const home = pm.response.json();",
+                  "if (home && home.id) {",
+                  "  pm.environment.set('homeId', home.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Memories",
+      "item": [
+        {
+          "name": "GET /api/homes/:homeId/memories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/memories",
+            "description": "Lists memories for `{{homeId}}`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/homes/:homeId/memories",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman memory\",\n  \"category\": \"general\",\n  \"content\": \"Created from the HouseIQ Postman collection for testing.\",\n  \"importance\": 3\n}"
+            },
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/memories",
+            "description": "Creates a manual memory on the home."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/homes/:homeId/memory-search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"roof leak\"\n}"
+            },
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/memory-search",
+            "description": "Semantic memory search using embeddings."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returns results array', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.results).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Home Data",
+      "item": [
+        {
+          "name": "GET /api/homes/:homeId/issues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/issues"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/homes/:homeId/projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/projects"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/homes/:homeId/assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/assets"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Documents",
+      "item": [
+        {
+          "name": "GET /api/homes/:homeId/documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/documents",
+            "description": "Lists documents for a home. If `ownedDocumentId` is empty, stores the first document id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const docs = pm.response.json();",
+                  "if (Array.isArray(docs) && docs.length > 0 && !pm.environment.get('ownedDocumentId')) {",
+                  "  pm.environment.set('ownedDocumentId', docs[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/homes/:homeId/documents/upload",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "document",
+                  "description": "Select a .txt or .pdf file in Postman before sending.",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "documentType",
+                  "value": "general",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/documents/upload",
+            "description": "Upload a document for analysis + private S3 storage.\n\nIn Postman: Body → form-data → choose a file for the `document` field.\n\nOn success, stores the new document id in `ownedDocumentId` and `deletableDocumentId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "try {",
+                  "  const body = pm.response.json();",
+                  "  const id = (body.document && body.document.id) || body.documentId || body.id;",
+                  "  if (id) {",
+                  "    pm.environment.set('ownedDocumentId', id);",
+                  "    pm.environment.set('deletableDocumentId', id);",
+                  "  }",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/documents/:documentId/download-url",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{ownedDocumentId}}/download-url",
+            "description": "Creates a temporary signed S3 URL for an owned document (expires in 300 seconds)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Has signed URL payload', function () {",
+                  "  pm.expect(body.documentId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.fileName).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.url).to.be.a('string').and.include('http');",
+                  "  pm.expect(body.expiresInSeconds).to.eql(300);",
+                  "});",
+                  "",
+                  "if (body.url) {",
+                  "  pm.environment.set('signedDownloadUrl', body.url);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/documents/:documentId",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{deletableDocumentId}}",
+            "description": "Deletes an owned document and its private S3 object when present.\n\nUse `deletableDocumentId` so you do not accidentally delete the doc used for happy-path download tests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Deletion confirmation shape', function () {",
+                  "  pm.expect(body.message).to.eql('Document deleted successfully');",
+                  "  pm.expect(body.documentId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.fileName).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "if (body.documentId) {",
+                  "  pm.environment.set('deletedDocumentId', body.documentId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 Document Ownership (Parts 15-19)",
+      "description": "Tutorial Parts 15–19.\n\nTokens auto-refresh from Auth0 test users in the environment.\nStill needed once:\n- `ownedDocumentId` — list/upload as User A\n- `userBDocumentId` — a document owned by User B (Part 18)\n- `deletableDocumentId` — disposable upload for Part 19\n\nManual / out-of-band checks:\n- CockroachDB SELECT after Part 18 / 19\n- Browser open of signed URL (Part 17)\n- Re-login as User B to confirm their file still opens",
+      "item": [
+        {
+          "name": "Part 15 — GET download-url malformed ID (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/not-a-uuid/download-url",
+            "description": "Expected: 400 Bad Request\nBody: { \"error\": \"A valid document ID is required\" }\n\nNo DB query, S3 request, or deletion should occur."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message for invalid document ID', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error).to.eql('A valid document ID is required');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 15 — DELETE malformed ID (400)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/not-a-uuid",
+            "description": "Expected: 400 Bad Request\nBody: { \"error\": \"A valid document ID is required\" }"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message for invalid document ID', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error).to.eql('A valid document ID is required');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 16 — GET download-url without token (401)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{ownedDocumentId}}/download-url",
+            "description": "No Authorization header.\nExpected: 401 Unauthorized\n\nConfirms authentication runs before ownership checking."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 16 — DELETE without token (401)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{ownedDocumentId}}",
+            "description": "No Authorization header.\nExpected: 401 Unauthorized"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 17 — GET owned document download-url (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{ownedDocumentId}}/download-url",
+            "description": "Expected: 200 OK with\n{\n  documentId,\n  fileName,\n  url,\n  expiresInSeconds: 300\n}\n\nOpen `url` in a browser to confirm the original file loads. URL should work for ~5 minutes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Response shape matches signed URL contract', function () {",
+                  "  pm.expect(body).to.have.property('documentId');",
+                  "  pm.expect(body).to.have.property('fileName');",
+                  "  pm.expect(body).to.have.property('url');",
+                  "  pm.expect(body.expiresInSeconds).to.eql(300);",
+                  "  pm.expect(body.url).to.be.a('string').and.include('http');",
+                  "});",
+                  "",
+                  "if (body.url) {",
+                  "  pm.environment.set('signedDownloadUrl', body.url);",
+                  "  console.log('Signed URL (open in browser):', body.url);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 18 — GET another user's document (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{userBDocumentId}}/download-url",
+            "description": "Authenticate as User A (`accessToken`) against User B's document UUID (`userBDocumentId`).\n\nExpected: 404 Not Found\nBody: { \"error\": \"Document not found\" }\n\nHouseIQ must not generate a signed S3 URL.\n\nManual follow-up:\nSELECT id, home_id, file_name, metadata FROM documents WHERE id = 'USER_B_DOCUMENT_ID';\nExpected: 1 row\nThen log in as User B and open the original document."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Does not reveal the other user document', function () {",
+                  "  pm.expect(body.error).to.eql('Document not found');",
+                  "});",
+                  "",
+                  "pm.test('Does not return a signed URL', function () {",
+                  "  pm.expect(body.url).to.not.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 18 — DELETE another user's document (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{userBDocumentId}}",
+            "description": "Authenticate as User A against User B's document.\n\nExpected: 404 Not Found\nBody: { \"error\": \"Document not found\" }\n\nVerify User B's row still exists in CockroachDB afterward."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Does not reveal the other user document', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error).to.eql('Document not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 19 — DELETE own disposable document (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{deletableDocumentId}}",
+            "description": "Prerequisite: upload a disposable .txt via the HouseIQ UI or the Documents upload request, then set `deletableDocumentId`.\n\nExpected:\n{\n  \"message\": \"Document deleted successfully\",\n  \"documentId\": \"...\",\n  \"fileName\": \"...\"\n}\n\nManual DB check:\nSELECT id, file_name FROM documents WHERE id = 'DELETED_DOCUMENT_ID';\nExpected: 0 rows"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Deletion confirmation shape', function () {",
+                  "  pm.expect(body.message).to.eql('Document deleted successfully');",
+                  "  pm.expect(body.documentId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.fileName).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "if (body.documentId) {",
+                  "  pm.environment.set('deletedDocumentId', body.documentId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Part 19 — GET download-url for deleted document (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/documents/{{deletedDocumentId}}/download-url",
+            "description": "After Part 19 delete.\nExpected: 404 Not Found"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Deleted document is not found', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error).to.eql('Document not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 Agent",
+      "item": [
+        {
+          "name": "POST /api/homes/:homeId/ask",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What should I know about this home?\"\n}"
+            },
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/ask",
+            "description": "Runs the HouseIQ agent against a home. Can take longer than other routes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-fetch Auth0 access tokens via Resource Owner Password grant.",
+          "// Uses AUTH0_TEST_* credentials mirrored into the HouseIQ Local environment.",
+          "const skewMs = 60 * 1000;",
+          "",
+          "function tokenFresh(expiresAtKey) {",
+          "  const expiresAt = Number(pm.environment.get(expiresAtKey) || 0);",
+          "  return Boolean(expiresAt && Date.now() < expiresAt - skewMs);",
+          "}",
+          "",
+          "function needsToken(tokenKey, expiresAtKey) {",
+          "  return !(pm.environment.get(tokenKey) && tokenFresh(expiresAtKey));",
+          "}",
+          "",
+          "function requestToken(usernameKey, passwordKey, tokenKey, expiresAtKey, done) {",
+          "  const domain = pm.environment.get('auth0Domain');",
+          "  const audience = pm.environment.get('auth0Audience');",
+          "  const clientId = pm.environment.get('auth0ClientId');",
+          "  const clientSecret = pm.environment.get('auth0ClientSecret');",
+          "  const realm = pm.environment.get('auth0Realm') || 'Username-Password-Authentication';",
+          "  const username = pm.environment.get(usernameKey);",
+          "  const password = pm.environment.get(passwordKey);",
+          "",
+          "  if (!domain || !audience || !clientId || !clientSecret || !username || !password) {",
+          "    console.warn('Skipping Auth0 token fetch: missing env credentials for ' + tokenKey);",
+          "    return done();",
+          "  }",
+          "",
+          "  if (!needsToken(tokenKey, expiresAtKey)) {",
+          "    return done();",
+          "  }",
+          "",
+          "  pm.sendRequest({",
+          "    url: 'https://' + domain + '/oauth/token',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/json' },",
+          "    body: {",
+          "      mode: 'raw',",
+          "      raw: JSON.stringify({",
+          "        grant_type: 'http://auth0.com/oauth/grant-type/password-realm',",
+          "        username: username,",
+          "        password: password,",
+          "        client_id: clientId,",
+          "        client_secret: clientSecret,",
+          "        audience: audience,",
+          "        realm: realm,",
+          "        scope: 'openid profile email'",
+          "      })",
+          "    }",
+          "  }, function (err, response) {",
+          "    if (err) {",
+          "      console.error('Auth0 token request failed for ' + tokenKey, err);",
+          "      return done();",
+          "    }",
+          "    if (response.code !== 200) {",
+          "      console.error('Auth0 token error for ' + tokenKey + ':', response.code, response.text());",
+          "      return done();",
+          "    }",
+          "    const body = response.json();",
+          "    if (!body.access_token) {",
+          "      console.error('Auth0 response missing access_token for ' + tokenKey);",
+          "      return done();",
+          "    }",
+          "    pm.environment.set(tokenKey, body.access_token);",
+          "    const expiresInMs = Number(body.expires_in || 3600) * 1000;",
+          "    pm.environment.set(expiresAtKey, String(Date.now() + expiresInMs));",
+          "    console.log('Refreshed ' + tokenKey);",
+          "    return done();",
+          "  });",
+          "}",
+          "",
+          "// Fetch User A then User B sequentially so the main request waits for both.",
+          "requestToken(",
+          "  'auth0UserAUsername',",
+          "  'auth0UserAPassword',",
+          "  'accessToken',",
+          "  'accessTokenExpiresAt',",
+          "  function () {",
+          "    requestToken(",
+          "      'auth0UserBUsername',",
+          "      'auth0UserBPassword',",
+          "      'accessTokenUserB',",
+          "      'accessTokenUserBExpiresAt',",
+          "      function () {}",
+          "    );",
+          "  }",
+          ");"
+        ]
+      }
+    }
+  ]
+}

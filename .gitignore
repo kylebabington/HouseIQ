@@ -3,3 +3,20 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Cursor local IDE settings (plugin toggles, etc.)
+.cursor/
+
+# Secrets / deps if anything ever lands at repo root
+.env
+.env.*
+!.env.example
+node_modules/
+
+# Optional local noise
+*.log
+coverage/
+.turbo/
+
+# Postman env may contain Auth0 test client secrets / passwords
+postman/HouseIQ.local.postman_environment.json
