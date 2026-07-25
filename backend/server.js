@@ -277,17 +277,31 @@ const VALID_ONBOARDING_STATUSES =
 /**
  * Validates and normalizes one editable profile value.
  *
- * A return value of null is allowed. This lets users clear a
- * previously saved field when they discover it was incorrect.
+ * A return value of null is allowed for most fields so users
+ * can clear a previously saved value. onboardingStatus is
+ * NOT NULL in the database, so null / blank values are rejected.
  */
 function validateHomeProfileValue(
     fieldName,
     rawValue
 ) {
-    // Null explicitly clears the field.
+    // Null explicitly clears nullable fields.
+    // onboarding_status is NOT NULL, so clearing it would
+    // fail at the database and surface as a 500.
     if (
         rawValue === null
     ) {
+        if (
+            fieldName ===
+            "onboardingStatus"
+        ) {
+            return {
+                valid: false,
+                error:
+                    "onboardingStatus must be not_started, in_progress, or completed",
+            };
+        }
+
         return {
             valid: true,
             value: null,
@@ -311,7 +325,10 @@ function validateHomeProfileValue(
             return {
                 valid: false,
                 error:
-                    `${fieldName} must be a string or null`,
+                    fieldName ===
+                        "onboardingStatus"
+                        ? "onboardingStatus must be not_started, in_progress, or completed"
+                        : `${fieldName} must be a string or null`,
             };
         }
 
@@ -319,8 +336,20 @@ function validateHomeProfileValue(
             rawValue.trim();
 
         // Empty strings are normalized to null rather than
-        // storing meaningless whitespace.
+        // storing meaningless whitespace — except
+        // onboardingStatus, which cannot be null.
         if (!value) {
+            if (
+                fieldName ===
+                "onboardingStatus"
+            ) {
+                return {
+                    valid: false,
+                    error:
+                        "onboardingStatus must be not_started, in_progress, or completed",
+                };
+            }
+
             return {
                 valid: true,
                 value: null,

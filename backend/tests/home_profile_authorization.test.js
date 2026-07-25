@@ -1150,5 +1150,51 @@ describe(
                 ).toBeNull();
             }
         );
+
+
+        test(
+            "rejects clearing onboardingStatus with null or blank string",
+            async () => {
+                for (const rawValue of [
+                    null,
+                    "",
+                    "   ",
+                ]) {
+                    const response =
+                        await request(app)
+                            .patch(
+                                `/api/homes/${USER_A_HOME_ID}/profile`
+                            )
+                            .set(
+                                "x-test-user-id",
+                                USER_A_ID
+                            )
+                            .send({
+                                onboardingStatus:
+                                    rawValue,
+                            });
+
+                    expect(
+                        response.status
+                    ).toBe(400);
+
+                    expect(
+                        response.body
+                    ).toEqual({
+                        error:
+                            "Home profile validation failed",
+
+                        fields: {
+                            onboardingStatus:
+                                "onboardingStatus must be not_started, in_progress, or completed",
+                        },
+                    });
+
+                    expect(
+                        testDatabase.profiles
+                    ).toHaveLength(0);
+                }
+            }
+        );
     }
 );
