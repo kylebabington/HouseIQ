@@ -135,6 +135,430 @@ function isValidUuid(value) {
 }
 
 // ---------------------------------------------------------
+// HOME PROFILE CONFIGURATION
+// ---------------------------------------------------------
+//
+// The client uses camelCase field names while CockroachDB
+// uses snake_case column names.
+//
+// This allowlist performs three jobs:
+//
+// 1. Defines which profile fields clients may edit.
+// 2. Maps API names to database column names.
+// 3. Prevents arbitrary SQL column injection.
+//
+const HOME_PROFILE_FIELDS = {
+    propertyType:
+        "property_type",
+
+    squareFeet:
+        "square_feet",
+
+    bedrooms:
+        "bedrooms",
+
+    fullBathrooms:
+        "full_bathrooms",
+
+    halfBathrooms:
+        "half_bathrooms",
+
+    stories:
+        "stories",
+
+    foundationType:
+        "foundation_type",
+
+    basementType:
+        "basement_type",
+
+    exteriorMaterial:
+        "exterior_material",
+
+    roofMaterial:
+        "roof_material",
+
+    heatingType:
+        "heating_type",
+
+    coolingType:
+        "cooling_type",
+
+    waterHeaterType:
+        "water_heater_type",
+
+    waterSource:
+        "water_source",
+
+    sewerType:
+        "sewer_type",
+
+    electricalServiceAmps:
+        "electrical_service_amps",
+
+    garageType:
+        "garage_type",
+
+    garageSpaces:
+        "garage_spaces",
+
+    lotSizeSqFt:
+        "lot_size_sq_ft",
+
+    onboardingStatus:
+        "onboarding_status",
+
+    onboardingStep:
+        "onboarding_step",
+};
+
+
+// String fields that may contain controlled labels such as:
+//
+// central_air
+// crawl_space
+// asphalt_shingle
+//
+const HOME_PROFILE_STRING_FIELDS =
+    new Set([
+        "propertyType",
+        "foundationType",
+        "basementType",
+        "exteriorMaterial",
+        "roofMaterial",
+        "heatingType",
+        "coolingType",
+        "waterHeaterType",
+        "waterSource",
+        "sewerType",
+        "garageType",
+        "onboardingStatus",
+        "onboardingStep",
+    ]);
+
+
+// Fields that must contain whole numbers.
+const HOME_PROFILE_INTEGER_FIELDS =
+    new Set([
+        "squareFeet",
+        "bedrooms",
+        "fullBathrooms",
+        "halfBathrooms",
+        "electricalServiceAmps",
+        "garageSpaces",
+        "lotSizeSqFt",
+    ]);
+
+
+// The number of stories may contain a decimal such as:
+//
+// 1
+// 1.5
+// 2
+//
+const HOME_PROFILE_DECIMAL_FIELDS =
+    new Set([
+        "stories",
+    ]);
+
+
+// Only these onboarding states may be written.
+const VALID_ONBOARDING_STATUSES =
+    new Set([
+        "not_started",
+        "in_progress",
+        "completed",
+    ]);
+
+// ---------------------------------------------------------
+// HOME PROFILE VALIDATION
+// ---------------------------------------------------------
+
+/**
+ * Validates and normalizes one editable profile value.
+ *
+ * A return value of null is allowed. This lets users clear a
+ * previously saved field when they discover it was incorrect.
+ */
+function validateHomeProfileValue(
+    fieldName,
+    rawValue
+) {
+    // Null explicitly clears the field.
+    if (
+        rawValue === null
+    ) {
+        return {
+            valid: true,
+            value: null,
+        };
+    }
+
+
+    // -----------------------------------------------------
+    // STRING FIELDS
+    // -----------------------------------------------------
+
+    if (
+        HOME_PROFILE_STRING_FIELDS.has(
+            fieldName
+        )
+    ) {
+        if (
+            typeof rawValue !==
+            "string"
+        ) {
+            return {
+                valid: false,
+                error:
+                    `${fieldName} must be a string or null`,
+            };
+        }
+
+        const value =
+            rawValue.trim();
+
+        // Empty strings are normalized to null rather than
+        // storing meaningless whitespace.
+        if (!value) {
+            return {
+                valid: true,
+                value: null,
+            };
+        }
+
+        if (
+            value.length > 100
+        ) {
+            return {
+                valid: false,
+                error:
+                    `${fieldName} must be 100 characters or fewer`,
+            };
+        }
+
+        if (
+            fieldName ===
+            "onboardingStatus"
+        ) {
+            if (
+                !VALID_ONBOARDING_STATUSES.has(
+                    value
+                )
+            ) {
+                return {
+                    valid: false,
+                    error:
+                        "onboardingStatus must be not_started, in_progress, or completed",
+                };
+            }
+        }
+
+        return {
+            valid: true,
+            value,
+        };
+    }
+
+
+    // -----------------------------------------------------
+    // INTEGER FIELDS
+    // -----------------------------------------------------
+
+    if (
+        HOME_PROFILE_INTEGER_FIELDS.has(
+            fieldName
+        )
+    ) {
+        const value =
+            Number(rawValue);
+
+        if (
+            !Number.isInteger(value)
+        ) {
+            return {
+                valid: false,
+                error:
+                    `${fieldName} must be a whole number or null`,
+            };
+        }
+
+        const fieldsThatAllowZero =
+            new Set([
+                "bedrooms",
+                "fullBathrooms",
+                "halfBathrooms",
+                "garageSpaces",
+            ]);
+
+        if (
+            fieldsThatAllowZero.has(
+                fieldName
+            )
+        ) {
+            if (value < 0) {
+                return {
+                    valid: false,
+                    error:
+                        `${fieldName} cannot be negative`,
+                };
+            }
+        } else if (
+            value <= 0
+        ) {
+            return {
+                valid: false,
+                error:
+                    `${fieldName} must be greater than zero`,
+            };
+        }
+
+        return {
+            valid: true,
+            value,
+        };
+    }
+
+
+    // -----------------------------------------------------
+    // DECIMAL FIELDS
+    // -----------------------------------------------------
+
+    if (
+        HOME_PROFILE_DECIMAL_FIELDS.has(
+            fieldName
+        )
+    ) {
+        const value =
+            Number(rawValue);
+
+        if (
+            !Number.isFinite(value) ||
+            value <= 0
+        ) {
+            return {
+                valid: false,
+                error:
+                    `${fieldName} must be a number greater than zero or null`,
+            };
+        }
+
+        return {
+            valid: true,
+            value,
+        };
+    }
+
+
+    return {
+        valid: false,
+        error:
+            `${fieldName} is not an editable home-profile field`,
+    };
+}
+
+
+/**
+ * Converts a CockroachDB profile row into the camelCase shape
+ * expected by the React frontend.
+ *
+ * When no profile record exists, the supplied row may contain
+ * null profile fields from the LEFT JOIN.
+ */
+function formatHomeProfile(
+    row
+) {
+    return {
+        homeId:
+            row.home_id,
+
+        homeName:
+            row.home_name,
+
+        yearBuilt:
+            row.year_built,
+
+        propertyType:
+            row.property_type,
+
+        squareFeet:
+            row.square_feet,
+
+        bedrooms:
+            row.bedrooms,
+
+        fullBathrooms:
+            row.full_bathrooms,
+
+        halfBathrooms:
+            row.half_bathrooms,
+
+        stories:
+            row.stories === null ||
+                row.stories === undefined
+                ? null
+                : Number(
+                    row.stories
+                ),
+
+        foundationType:
+            row.foundation_type,
+
+        basementType:
+            row.basement_type,
+
+        exteriorMaterial:
+            row.exterior_material,
+
+        roofMaterial:
+            row.roof_material,
+
+        heatingType:
+            row.heating_type,
+
+        coolingType:
+            row.cooling_type,
+
+        waterHeaterType:
+            row.water_heater_type,
+
+        waterSource:
+            row.water_source,
+
+        sewerType:
+            row.sewer_type,
+
+        electricalServiceAmps:
+            row.electrical_service_amps,
+
+        garageType:
+            row.garage_type,
+
+        garageSpaces:
+            row.garage_spaces,
+
+        lotSizeSqFt:
+            row.lot_size_sq_ft,
+
+        onboardingStatus:
+            row.onboarding_status ||
+            "not_started",
+
+        onboardingStep:
+            row.onboarding_step,
+
+        metadata:
+            row.metadata || {},
+
+        profileCreatedAt:
+            row.profile_created_at,
+
+        profileUpdatedAt:
+            row.profile_updated_at,
+    };
+}
+
+// ---------------------------------------------------------
 // HOME OWNERSHIP AUTHORIZATION
 // ---------------------------------------------------------
 //
@@ -887,6 +1311,409 @@ app.get(
             });
         }
     });
+
+// ---------------------------------------------------------
+// GET HOME PROFILE
+// ---------------------------------------------------------
+//
+// Returns the structured profile for one authorized home.
+//
+// A LEFT JOIN is used because older homes may not have a
+// home_profiles record yet.
+//
+// In that case, the endpoint still returns a complete response
+// with null profile fields and onboardingStatus not_started.
+//
+app.get(
+    "/api/homes/:homeId/profile",
+
+    requireAuth,
+    requireHomeOwnership,
+
+    async (req, res) => {
+        try {
+            const homeId =
+                req.authorizedHomeId;
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT
+                        homes.id
+                            AS home_id,
+
+                        homes.name
+                            AS home_name,
+
+                        homes.year_built,
+
+                        home_profiles.property_type,
+                        home_profiles.square_feet,
+                        home_profiles.bedrooms,
+                        home_profiles.full_bathrooms,
+                        home_profiles.half_bathrooms,
+                        home_profiles.stories,
+
+                        home_profiles.foundation_type,
+                        home_profiles.basement_type,
+                        home_profiles.exterior_material,
+                        home_profiles.roof_material,
+
+                        home_profiles.heating_type,
+                        home_profiles.cooling_type,
+                        home_profiles.water_heater_type,
+                        home_profiles.water_source,
+                        home_profiles.sewer_type,
+                        home_profiles.electrical_service_amps,
+
+                        home_profiles.garage_type,
+                        home_profiles.garage_spaces,
+                        home_profiles.lot_size_sq_ft,
+
+                        home_profiles.onboarding_status,
+                        home_profiles.onboarding_step,
+                        home_profiles.metadata,
+
+                        home_profiles.created_at
+                            AS profile_created_at,
+
+                        home_profiles.updated_at
+                            AS profile_updated_at
+
+                    FROM homes
+
+                    LEFT JOIN home_profiles
+                        ON home_profiles.home_id =
+                            homes.id
+
+                    WHERE homes.id = $1
+
+                    LIMIT 1
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
+
+            // This should be unusual because ownership middleware
+            // already verified the home. It protects against the
+            // home being deleted between the middleware query and
+            // this route query.
+            if (
+                result.rows.length ===
+                0
+            ) {
+                return res
+                    .status(404)
+                    .json({
+                        error:
+                            "Home not found",
+                    });
+            }
+
+            return res.json(
+                formatHomeProfile(
+                    result.rows[0]
+                )
+            );
+        } catch (error) {
+            console.error(
+                "Error fetching home profile:",
+                error
+            );
+
+            return res
+                .status(500)
+                .json({
+                    error:
+                        "Failed to fetch home profile",
+                });
+        }
+    }
+);
+
+// ---------------------------------------------------------
+// PATCH HOME PROFILE
+// ---------------------------------------------------------
+//
+// Creates or partially updates the structured profile for an
+// authorized home.
+//
+// Only fields in HOME_PROFILE_FIELDS are accepted.
+//
+// The SQL column names come from our server-controlled
+// allowlist. They never come directly from request text.
+//
+app.patch(
+    "/api/homes/:homeId/profile",
+
+    requireAuth,
+    requireHomeOwnership,
+
+    async (req, res) => {
+        try {
+            const homeId =
+                req.authorizedHomeId;
+
+            const requestBody =
+                req.body;
+
+            if (
+                !requestBody ||
+                typeof requestBody !==
+                "object" ||
+                Array.isArray(
+                    requestBody
+                )
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        error:
+                            "A profile update object is required",
+                    });
+            }
+
+
+            const requestEntries =
+                Object.entries(
+                    requestBody
+                );
+
+            if (
+                requestEntries.length ===
+                0
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        error:
+                            "At least one profile field is required",
+                    });
+            }
+
+
+            const normalizedUpdates =
+                [];
+
+            const validationErrors =
+                {};
+
+
+            for (
+                const [
+                    fieldName,
+                    rawValue,
+                ] of requestEntries
+            ) {
+                const databaseColumn =
+                    HOME_PROFILE_FIELDS[
+                    fieldName
+                    ];
+
+                if (
+                    !databaseColumn
+                ) {
+                    validationErrors[
+                        fieldName
+                    ] =
+                        "This field cannot be updated";
+
+                    continue;
+                }
+
+                const validation =
+                    validateHomeProfileValue(
+                        fieldName,
+                        rawValue
+                    );
+
+                if (
+                    !validation.valid
+                ) {
+                    validationErrors[
+                        fieldName
+                    ] =
+                        validation.error;
+
+                    continue;
+                }
+
+                normalizedUpdates.push({
+                    apiField:
+                        fieldName,
+
+                    databaseColumn,
+
+                    value:
+                        validation.value,
+                });
+            }
+
+
+            if (
+                Object.keys(
+                    validationErrors
+                ).length > 0
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        error:
+                            "Home profile validation failed",
+
+                        fields:
+                            validationErrors,
+                    });
+            }
+
+
+            // Build:
+            //
+            // property_type = $2
+            // square_feet = $3
+            //
+            // Column names are safe because they came from the
+            // server-owned allowlist above.
+            const insertColumns =
+                normalizedUpdates.map(
+                    (update) =>
+                        update.databaseColumn
+                );
+
+            const values =
+                normalizedUpdates.map(
+                    (update) =>
+                        update.value
+                );
+
+            const insertPlaceholders =
+                values.map(
+                    (
+                        value,
+                        index
+                    ) =>
+                        `$${index + 2}`
+                );
+
+            const conflictUpdates =
+                insertColumns.map(
+                    (column) =>
+                        `${column} = excluded.${column}`
+                );
+
+
+            const result =
+                await pool.query(
+                    `
+                    INSERT INTO home_profiles (
+                        home_id,
+                        ${insertColumns.join(
+                        ", "
+                    )}
+                    )
+                    VALUES (
+                        $1,
+                        ${insertPlaceholders.join(
+                        ", "
+                    )}
+                    )
+
+                    ON CONFLICT (
+                        home_id
+                    )
+                    DO UPDATE SET
+                        ${conflictUpdates.join(
+                        ", "
+                    )},
+                        updated_at = now()
+
+                    RETURNING *
+                    `,
+                    [
+                        homeId,
+                        ...values,
+                    ]
+                );
+
+
+            const updatedProfile =
+                result.rows[0];
+
+
+            // Read the home fields that belong to the main
+            // homes table so the response matches GET /profile.
+            const homeResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        name,
+                        year_built
+                    FROM homes
+                    WHERE id = $1
+                    LIMIT 1
+                    `,
+                    [
+                        homeId,
+                    ]
+                );
+
+
+            if (
+                homeResult.rows.length ===
+                0
+            ) {
+                return res
+                    .status(404)
+                    .json({
+                        error:
+                            "Home not found",
+                    });
+            }
+
+
+            const home =
+                homeResult.rows[0];
+
+
+            return res.json(
+                formatHomeProfile({
+                    home_id:
+                        home.id,
+
+                    home_name:
+                        home.name,
+
+                    year_built:
+                        home.year_built,
+
+                    ...updatedProfile,
+
+                    profile_created_at:
+                        updatedProfile
+                            .created_at,
+
+                    profile_updated_at:
+                        updatedProfile
+                            .updated_at,
+                })
+            );
+        } catch (error) {
+            console.error(
+                "Error updating home profile:",
+                error
+            );
+
+            return res
+                .status(500)
+                .json({
+                    error:
+                        "Failed to update home profile",
+                });
+        }
+    }
+);
 
 // Add a memory to a home manually.
 // Later, most memories will be created automatically by the agent,

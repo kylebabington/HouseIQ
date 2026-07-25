@@ -23,19 +23,22 @@ Re-copy credentials into the Postman environment after changing `backend/.env` (
 
 | Variable | How it gets set |
 |---|---|
-| `homeId` | Auto from List/Create home |
-| `ownedDocumentId` | Auto from List/Upload documents |
-| `deletableDocumentId` | Auto from Upload (use a disposable file for Part 19) |
-| `deletedDocumentId` | Auto after Part 19 delete |
-| `userBDocumentId` | Set once: upload/list as User B, then paste that document id |
+| `homeId` | Auto from Homes list/create (User A) |
+| `userBHomeId` | Auto from User B Setup list/create |
+| `ownedDocumentId` | Auto from Documents list (or upload if still empty) |
+| `deletableDocumentId` | Auto from Documents upload (disposable file) |
+| `deletedDocumentId` | Auto after disposable delete |
+| `userBDocumentId` | Auto from User B Setup list/upload |
 
-## Document ownership suite
+No manual UUID paste is required when Auth0 User A/B credentials are set.
 
-Run folder **07 Document Ownership (Parts 15-19)** with the Collection Runner after `homeId` + document ids exist.
+## Suggested runner order
 
-Parts 15–16 need `ownedDocumentId`.  
-Part 18 needs `userBDocumentId`.  
-Part 19 needs `deletableDocumentId`.
+1. **Homes** — sets `homeId`
+2. **Home Profile** — GET/PATCH profile + cross-user 404 checks
+3. **Documents** — sets `ownedDocumentId` / `deletableDocumentId` (select a file for upload)
+4. **User B Setup** — sets `userBHomeId` / `userBDocumentId` (select a file for User B upload if needed)
+5. **Document Ownership** — authz suite
 
 ## Connecting Postman MCP in Cursor (optional)
 
