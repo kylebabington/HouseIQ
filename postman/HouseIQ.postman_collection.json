@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "houseiq-api-collection",
     "name": "HouseIQ API",
-    "description": "Full HouseIQ backend collection for local development.\n\n## Setup\n1. Import `HouseIQ.postman_collection.json` and `HouseIQ.local.postman_environment.json`.\n2. Select the **HouseIQ Local** environment.\n3. Ensure Auth0 test credentials are in the environment (`auth0Domain`, `auth0ClientId`, `auth0ClientSecret`, user A/B username+password).\n   These mirror `AUTH0_TEST_*` from `backend/.env` (Resource Owner Password grant).\n4. Ensure the backend is running on `http://localhost:5000`.\n\n## Auth (automatic)\nCollection pre-request scripts fetch/refresh `accessToken` and `accessTokenUserB` via Auth0 password-realm grant.\nTokens are cached until near expiry — you should not need to paste Bearer tokens manually.\n\n## IDs (automatic where possible)\n- `GET /api/homes` / `POST /api/homes` set `homeId`\n- `GET/POST documents` set `ownedDocumentId` / `deletableDocumentId`\n- Part 19 delete sets `deletedDocumentId`\n- `userBDocumentId` still needs a document owned by User B (upload while using User B, or set once)\n\n## Document ownership suite\nRun folder **07 Document Ownership (Parts 15-19)** after `homeId` + document ids exist.",
+    "description": "Full HouseIQ backend collection for local development.\n\n## Setup\n1. Import `HouseIQ.postman_collection.json` and `HouseIQ.local.postman_environment.json`.\n2. Select the **HouseIQ Local** environment.\n3. Ensure Auth0 test credentials are in the environment (`auth0Domain`, `auth0ClientId`, `auth0ClientSecret`, user A/B username+password).\n   These mirror `AUTH0_TEST_*` from `backend/.env` (Resource Owner Password grant).\n4. Ensure the backend is running on `http://localhost:5000`.\n\n## Auth (automatic)\nCollection pre-request scripts fetch/refresh `accessToken` and `accessTokenUserB` via Auth0 password-realm grant.\nTokens are cached until near expiry — you should not need to paste Bearer tokens manually.\n\n## IDs (automatic)\n- `homeId` — List/Create home (User A)\n- `ownedDocumentId` — List documents (or Upload if still empty)\n- `deletableDocumentId` — Upload document (User A)\n- `deletedDocumentId` — after disposable delete\n- `userBHomeId` / `userBDocumentId` — User B Setup folder\n\n## Suggested runner order\nHomes → Home Profile → Documents → User B Setup → Document Ownership",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -23,7 +23,7 @@
   ],
   "item": [
     {
-      "name": "01 Health",
+      "name": "Health",
       "item": [
         {
           "name": "GET / — Backend health",
@@ -58,7 +58,7 @@
       ]
     },
     {
-      "name": "02 Auth",
+      "name": "Auth",
       "item": [
         {
           "name": "GET /api/auth/me — Current user",
@@ -116,7 +116,7 @@
       ]
     },
     {
-      "name": "03 Homes",
+      "name": "Homes",
       "item": [
         {
           "name": "GET /api/homes — List homes",
@@ -188,7 +188,7 @@
       ]
     },
     {
-      "name": "04 Memories",
+      "name": "Memories",
       "item": [
         {
           "name": "GET /api/homes/:homeId/memories",
@@ -282,7 +282,7 @@
       ]
     },
     {
-      "name": "05 Home Data",
+      "name": "Home Data",
       "item": [
         {
           "name": "GET /api/homes/:homeId/issues",
@@ -350,7 +350,264 @@
       ]
     },
     {
-      "name": "06 Documents",
+      "name": "Home Profile",
+      "description": "GET/PATCH home profile for `{{homeId}}` (User A), then cross-user 404 checks with User B's token.",
+      "item": [
+        {
+          "name": "GET profile (initial)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/profile",
+            "description": "Returns the structured home profile. A home without profile data still returns 200 with null fields and `onboardingStatus: \"not_started\"`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "const homeId = pm.environment.get('homeId');",
+                  "",
+                  "pm.test('Profile shape includes home and onboarding fields', function () {",
+                  "  pm.expect(body.homeId).to.eql(homeId);",
+                  "  pm.expect(body).to.have.property('homeName');",
+                  "  pm.expect(body).to.have.property('onboardingStatus');",
+                  "  pm.expect(body).to.have.property('propertyType');",
+                  "  pm.expect(body).to.have.property('squareFeet');",
+                  "  pm.expect(body).to.have.property('bedrooms');",
+                  "  pm.expect(body).to.have.property('metadata');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"propertyType\": \"single_family\",\n  \"squareFeet\": 1850,\n  \"bedrooms\": 3,\n  \"fullBathrooms\": 2,\n  \"halfBathrooms\": 1,\n  \"stories\": 2,\n  \"foundationType\": \"crawl_space\",\n  \"exteriorMaterial\": \"vinyl\",\n  \"roofMaterial\": \"asphalt_shingle\",\n  \"heatingType\": \"gas_furnace\",\n  \"coolingType\": \"central_air\",\n  \"waterSource\": \"municipal\",\n  \"sewerType\": \"municipal\",\n  \"electricalServiceAmps\": 200,\n  \"garageType\": \"attached\",\n  \"garageSpaces\": 2,\n  \"onboardingStatus\": \"in_progress\",\n  \"onboardingStep\": \"utilities\"\n}"
+            },
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/profile",
+            "description": "Partial update of allowlisted profile fields for the owned home."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Echoes patched profile fields', function () {",
+                  "  pm.expect(body.propertyType).to.eql('single_family');",
+                  "  pm.expect(Number(body.squareFeet)).to.eql(1850);",
+                  "  pm.expect(Number(body.bedrooms)).to.eql(3);",
+                  "  pm.expect(Number(body.fullBathrooms)).to.eql(2);",
+                  "  pm.expect(Number(body.halfBathrooms)).to.eql(1);",
+                  "  pm.expect(Number(body.stories)).to.eql(2);",
+                  "  pm.expect(body.foundationType).to.eql('crawl_space');",
+                  "  pm.expect(body.exteriorMaterial).to.eql('vinyl');",
+                  "  pm.expect(body.roofMaterial).to.eql('asphalt_shingle');",
+                  "  pm.expect(body.heatingType).to.eql('gas_furnace');",
+                  "  pm.expect(body.coolingType).to.eql('central_air');",
+                  "  pm.expect(body.waterSource).to.eql('municipal');",
+                  "  pm.expect(body.sewerType).to.eql('municipal');",
+                  "  pm.expect(Number(body.electricalServiceAmps)).to.eql(200);",
+                  "  pm.expect(body.garageType).to.eql('attached');",
+                  "  pm.expect(Number(body.garageSpaces)).to.eql(2);",
+                  "  pm.expect(body.onboardingStatus).to.eql('in_progress');",
+                  "  pm.expect(body.onboardingStep).to.eql('utilities');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET profile (after PATCH)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/profile",
+            "description": "Confirms patched values remain saved after PATCH."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Persisted profile matches PATCH body', function () {",
+                  "  pm.expect(body.propertyType).to.eql('single_family');",
+                  "  pm.expect(Number(body.squareFeet)).to.eql(1850);",
+                  "  pm.expect(Number(body.bedrooms)).to.eql(3);",
+                  "  pm.expect(Number(body.fullBathrooms)).to.eql(2);",
+                  "  pm.expect(Number(body.halfBathrooms)).to.eql(1);",
+                  "  pm.expect(Number(body.stories)).to.eql(2);",
+                  "  pm.expect(body.foundationType).to.eql('crawl_space');",
+                  "  pm.expect(body.exteriorMaterial).to.eql('vinyl');",
+                  "  pm.expect(body.roofMaterial).to.eql('asphalt_shingle');",
+                  "  pm.expect(body.heatingType).to.eql('gas_furnace');",
+                  "  pm.expect(body.coolingType).to.eql('central_air');",
+                  "  pm.expect(body.waterSource).to.eql('municipal');",
+                  "  pm.expect(body.sewerType).to.eql('municipal');",
+                  "  pm.expect(Number(body.electricalServiceAmps)).to.eql(200);",
+                  "  pm.expect(body.garageType).to.eql('attached');",
+                  "  pm.expect(Number(body.garageSpaces)).to.eql(2);",
+                  "  pm.expect(body.onboardingStatus).to.eql('in_progress');",
+                  "  pm.expect(body.onboardingStep).to.eql('utilities');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET another user's home profile (404)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessTokenUserB}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/profile",
+            "description": "User B token against User A's `homeId`.\nExpected: 404 { \"error\": \"Home not found\" }"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Does not reveal the other user home', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error).to.eql('Home not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH another user's home profile (404)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessTokenUserB}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"propertyType\": \"townhouse\",\n  \"onboardingStatus\": \"completed\"\n}"
+            },
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/profile",
+            "description": "User B token attempting to PATCH User A's home.\nExpected: 404 { \"error\": \"Home not found\" }"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Does not reveal the other user home', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error).to.eql('Home not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET profile as owner (unchanged)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/profile",
+            "description": "After failed cross-user PATCH, owner profile must still match the earlier PATCH body."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Profile unchanged after cross-user PATCH attempt', function () {",
+                  "  pm.expect(body.propertyType).to.eql('single_family');",
+                  "  pm.expect(Number(body.squareFeet)).to.eql(1850);",
+                  "  pm.expect(Number(body.bedrooms)).to.eql(3);",
+                  "  pm.expect(body.onboardingStatus).to.eql('in_progress');",
+                  "  pm.expect(body.onboardingStep).to.eql('utilities');",
+                  "  pm.expect(body.propertyType).to.not.eql('townhouse');",
+                  "  pm.expect(body.onboardingStatus).to.not.eql('completed');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Documents",
       "item": [
         {
           "name": "GET /api/homes/:homeId/documents",
@@ -401,7 +658,7 @@
               ]
             },
             "url": "{{baseUrl}}/api/homes/{{homeId}}/documents/upload",
-            "description": "Upload a document for analysis + private S3 storage.\n\nIn Postman: Body → form-data → choose a file for the `document` field.\n\nOn success, stores the new document id in `ownedDocumentId` and `deletableDocumentId`."
+            "description": "Upload a document for analysis + private S3 storage.\n\nIn Postman: Body → form-data → choose a file for the `document` field.\n\nOn success, stores the new document id in `deletableDocumentId`. Also sets `ownedDocumentId` only when that variable is still empty."
           },
           "event": [
             {
@@ -417,8 +674,10 @@
                   "  const body = pm.response.json();",
                   "  const id = (body.document && body.document.id) || body.documentId || body.id;",
                   "  if (id) {",
-                  "    pm.environment.set('ownedDocumentId', id);",
                   "    pm.environment.set('deletableDocumentId', id);",
+                  "    if (!pm.environment.get('ownedDocumentId')) {",
+                  "      pm.environment.set('ownedDocumentId', id);",
+                  "    }",
                   "  }",
                   "} catch (e) {}"
                 ]
@@ -496,11 +755,197 @@
       ]
     },
     {
-      "name": "07 Document Ownership (Parts 15-19)",
-      "description": "Tutorial Parts 15–19.\n\nTokens auto-refresh from Auth0 test users in the environment.\nStill needed once:\n- `ownedDocumentId` — list/upload as User A\n- `userBDocumentId` — a document owned by User B (Part 18)\n- `deletableDocumentId` — disposable upload for Part 19\n\nManual / out-of-band checks:\n- CockroachDB SELECT after Part 18 / 19\n- Browser open of signed URL (Part 17)\n- Re-login as User B to confirm their file still opens",
+      "name": "User B Setup",
+      "description": "Creates/lists User B's home and document so Document Ownership cross-user tests need no manual UUID paste.\n\nAll requests use Bearer `{{accessTokenUserB}}`.",
       "item": [
         {
-          "name": "Part 15 — GET download-url malformed ID (400)",
+          "name": "GET /api/homes — List homes (User B)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessTokenUserB}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes",
+            "description": "Lists User B homes. Sets `userBHomeId` from the first home when empty."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const homes = pm.response.json();",
+                  "pm.test('Returns an array', function () {",
+                  "  pm.expect(homes).to.be.an('array');",
+                  "});",
+                  "",
+                  "if (Array.isArray(homes) && homes.length > 0 && !pm.environment.get('userBHomeId')) {",
+                  "  pm.environment.set('userBHomeId', homes[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/homes — Create home (User B)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessTokenUserB}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman User B Home\",\n  \"yearBuilt\": 2001,\n  \"notes\": \"Created for cross-user document ownership tests\"\n}"
+            },
+            "url": "{{baseUrl}}/api/homes",
+            "description": "Creates a home for User B and stores its id in `userBHomeId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const home = pm.response.json();",
+                  "if (home && home.id) {",
+                  "  pm.environment.set('userBHomeId', home.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/homes/:homeId/documents (User B)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessTokenUserB}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{userBHomeId}}/documents",
+            "description": "Lists User B documents on `userBHomeId`. Sets `userBDocumentId` from the first document when empty."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const docs = pm.response.json();",
+                  "if (Array.isArray(docs) && docs.length > 0 && !pm.environment.get('userBDocumentId')) {",
+                  "  pm.environment.set('userBDocumentId', docs[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/homes/:homeId/documents/upload (User B)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessTokenUserB}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "document",
+                  "description": "Select a .txt or .pdf file in Postman before sending.",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "documentType",
+                  "value": "general",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/homes/{{userBHomeId}}/documents/upload",
+            "description": "Upload as User B. Stores the new document id in `userBDocumentId` for cross-user Document Ownership tests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "try {",
+                  "  const body = pm.response.json();",
+                  "  const id = (body.document && body.document.id) || body.documentId || body.id;",
+                  "  if (id) {",
+                  "    pm.environment.set('userBDocumentId', id);",
+                  "  }",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Document Ownership",
+      "description": "Document authz checks.\n\nPrerequisites (automatic):\n- `ownedDocumentId` — Documents list/upload as User A\n- `userBDocumentId` — User B Setup folder\n- `deletableDocumentId` — disposable upload as User A\n\nManual / out-of-band checks:\n- CockroachDB SELECT after cross-user / delete tests\n- Browser open of signed URL\n- Re-login as User B to confirm their file still opens",
+      "item": [
+        {
+          "name": "GET download-url malformed ID (400)",
           "request": {
             "method": "GET",
             "header": [],
@@ -527,7 +972,7 @@
           ]
         },
         {
-          "name": "Part 15 — DELETE malformed ID (400)",
+          "name": "DELETE malformed ID (400)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -554,7 +999,7 @@
           ]
         },
         {
-          "name": "Part 16 — GET download-url without token (401)",
+          "name": "GET download-url without token (401)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -579,7 +1024,7 @@
           ]
         },
         {
-          "name": "Part 16 — DELETE without token (401)",
+          "name": "DELETE without token (401)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -604,7 +1049,7 @@
           ]
         },
         {
-          "name": "Part 17 — GET owned document download-url (200)",
+          "name": "GET owned document download-url (200)",
           "request": {
             "method": "GET",
             "header": [],
@@ -641,12 +1086,12 @@
           ]
         },
         {
-          "name": "Part 18 — GET another user's document (404)",
+          "name": "GET another user's document (404)",
           "request": {
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/api/documents/{{userBDocumentId}}/download-url",
-            "description": "Authenticate as User A (`accessToken`) against User B's document UUID (`userBDocumentId`).\n\nExpected: 404 Not Found\nBody: { \"error\": \"Document not found\" }\n\nHouseIQ must not generate a signed S3 URL.\n\nManual follow-up:\nSELECT id, home_id, file_name, metadata FROM documents WHERE id = 'USER_B_DOCUMENT_ID';\nExpected: 1 row\nThen log in as User B and open the original document."
+            "description": "Authenticate as User A (`accessToken`) against User B's document UUID (`userBDocumentId`).\n\nExpected: 404 Not Found\nBody: { \"error\": \"Document not found\" }\n\nHouseIQ must not generate a signed S3 URL."
           },
           "event": [
             {
@@ -673,12 +1118,12 @@
           ]
         },
         {
-          "name": "Part 18 — DELETE another user's document (404)",
+          "name": "DELETE another user's document (404)",
           "request": {
             "method": "DELETE",
             "header": [],
             "url": "{{baseUrl}}/api/documents/{{userBDocumentId}}",
-            "description": "Authenticate as User A against User B's document.\n\nExpected: 404 Not Found\nBody: { \"error\": \"Document not found\" }\n\nVerify User B's row still exists in CockroachDB afterward."
+            "description": "Authenticate as User A against User B's document.\n\nExpected: 404 Not Found\nBody: { \"error\": \"Document not found\" }"
           },
           "event": [
             {
@@ -700,12 +1145,12 @@
           ]
         },
         {
-          "name": "Part 19 — DELETE own disposable document (200)",
+          "name": "DELETE own disposable document (200)",
           "request": {
             "method": "DELETE",
             "header": [],
             "url": "{{baseUrl}}/api/documents/{{deletableDocumentId}}",
-            "description": "Prerequisite: upload a disposable .txt via the HouseIQ UI or the Documents upload request, then set `deletableDocumentId`.\n\nExpected:\n{\n  \"message\": \"Document deleted successfully\",\n  \"documentId\": \"...\",\n  \"fileName\": \"...\"\n}\n\nManual DB check:\nSELECT id, file_name FROM documents WHERE id = 'DELETED_DOCUMENT_ID';\nExpected: 0 rows"
+            "description": "Prerequisite: upload a disposable .txt via Documents upload (sets `deletableDocumentId`).\n\nExpected:\n{\n  \"message\": \"Document deleted successfully\",\n  \"documentId\": \"...\",\n  \"fileName\": \"...\"\n}"
           },
           "event": [
             {
@@ -734,12 +1179,12 @@
           ]
         },
         {
-          "name": "Part 19 — GET download-url for deleted document (404)",
+          "name": "GET download-url for deleted document (404)",
           "request": {
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/api/documents/{{deletedDocumentId}}/download-url",
-            "description": "After Part 19 delete.\nExpected: 404 Not Found"
+            "description": "After disposable delete.\nExpected: 404 Not Found"
           },
           "event": [
             {
@@ -763,7 +1208,7 @@
       ]
     },
     {
-      "name": "08 Agent",
+      "name": "Agent",
       "item": [
         {
           "name": "POST /api/homes/:homeId/ask",

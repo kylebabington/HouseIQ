@@ -30,6 +30,133 @@
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ---------------------------------------------------------
+-- HOME PROFILES
+-- ---------------------------------------------------------
+--
+-- Stores structured physical facts about a home.
+--
+-- The homes table handles identity and ownership.
+-- The home_profiles table handles detailed property data.
+--
+-- Each home can have at most one profile because home_id is
+-- declared UNIQUE.
+--
+CREATE TABLE IF NOT EXISTS home_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  home_id UUID NOT NULL UNIQUE
+    REFERENCES homes(id)
+    ON DELETE CASCADE,
+
+  -- General property information
+  property_type STRING,
+  square_feet INT,
+  bedrooms INT,
+  full_bathrooms INT,
+  half_bathrooms INT,
+  stories DECIMAL,
+
+  -- Building structure and exterior
+  foundation_type STRING,
+  basement_type STRING,
+  exterior_material STRING,
+  roof_material STRING,
+
+  -- Heating, cooling, and utilities
+  heating_type STRING,
+  cooling_type STRING,
+  water_heater_type STRING,
+  water_source STRING,
+  sewer_type STRING,
+  electrical_service_amps INT,
+
+  -- Garage and lot
+  garage_type STRING,
+  garage_spaces INT,
+  lot_size_sq_ft INT,
+
+  -- Tracks progress through the future onboarding flow.
+  onboarding_status STRING
+    NOT NULL
+    DEFAULT 'not_started',
+
+  onboarding_step STRING,
+
+  -- Flexible storage for source tracking, confidence,
+  -- estimates, and future profile fields.
+  metadata JSONB
+    NOT NULL
+    DEFAULT '{}'::JSONB,
+
+  created_at TIMESTAMPTZ
+    NOT NULL
+    DEFAULT now(),
+
+  updated_at TIMESTAMPTZ
+    NOT NULL
+    DEFAULT now(),
+
+  -- Basic range checks prevent obviously invalid data from
+  -- reaching the database.
+  CONSTRAINT home_profiles_square_feet_check
+    CHECK (
+      square_feet IS NULL
+      OR square_feet > 0
+    ),
+
+  CONSTRAINT home_profiles_bedrooms_check
+    CHECK (
+      bedrooms IS NULL
+      OR bedrooms >= 0
+    ),
+
+  CONSTRAINT home_profiles_full_bathrooms_check
+    CHECK (
+      full_bathrooms IS NULL
+      OR full_bathrooms >= 0
+    ),
+
+  CONSTRAINT home_profiles_half_bathrooms_check
+    CHECK (
+      half_bathrooms IS NULL
+      OR half_bathrooms >= 0
+    ),
+
+  CONSTRAINT home_profiles_stories_check
+    CHECK (
+      stories IS NULL
+      OR stories > 0
+    ),
+
+  CONSTRAINT home_profiles_electrical_amps_check
+    CHECK (
+      electrical_service_amps IS NULL
+      OR electrical_service_amps > 0
+    ),
+
+  CONSTRAINT home_profiles_garage_spaces_check
+    CHECK (
+      garage_spaces IS NULL
+      OR garage_spaces >= 0
+    ),
+
+  CONSTRAINT home_profiles_lot_size_check
+    CHECK (
+      lot_size_sq_ft IS NULL
+      OR lot_size_sq_ft > 0
+    ),
+
+  CONSTRAINT home_profiles_onboarding_status_check
+    CHECK (
+      onboarding_status IN (
+        'not_started',
+        'in_progress',
+        'completed'
+      )
+    )
+);
+
 
 -- ---------------------------------------------------------
 -- HOME ASSETS
@@ -318,6 +445,10 @@ NOT NULL DEFAULT '[]'::JSONB;
 --
 CREATE INDEX IF NOT EXISTS idx_homes_owner_auth0_id
 ON homes (owner_auth0_id);
+
+-- Used when loading the one-to-one profile for a home.
+CREATE INDEX IF NOT EXISTS idx_home_profiles_home_id
+ON home_profiles (home_id);
 
 
 CREATE INDEX IF NOT EXISTS idx_memories_home_id

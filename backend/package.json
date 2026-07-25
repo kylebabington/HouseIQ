@@ -7,11 +7,12 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "db:schema": "node schema.js",
+    "db:schema": "node runschema.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:authorization": "vitest run tests/authorization.test.js",
-    "test:documents": "vitest run tests/document_authorization.test.js"
+    "test:documents": "vitest run tests/document_authorization.test.js",
+    "test:home-profile": "vitest run tests/home_profile_authorization.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1092.0",
