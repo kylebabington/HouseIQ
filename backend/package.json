@@ -10,7 +10,8 @@
     "db:schema": "node schema.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:authorization": "vitest run tests/authorization.test.js"
+    "test:authorization": "vitest run tests/authorization.test.js",
+    "test:documents": "vitest run tests/document_authorization.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1092.0",
