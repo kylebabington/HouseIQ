@@ -1,0 +1,119 @@
+# .github/workflows/backend-tests.yml
+
+# The name shown in the GitHub Actions interface.
+name: Backend Tests
+
+
+# ---------------------------------------------------------
+# WHEN THIS WORKFLOW RUNS
+# ---------------------------------------------------------
+#
+# Run the tests when:
+#
+# 1. Code is pushed directly to main.
+# 2. A pull request targeting main is opened or updated.
+#
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+
+# ---------------------------------------------------------
+# MINIMUM GITHUB PERMISSIONS
+# ---------------------------------------------------------
+#
+# The test workflow only needs permission to read repository
+# contents so it can check out the code.
+#
+permissions:
+  contents: read
+
+
+# ---------------------------------------------------------
+# PREVENT DUPLICATE RUNS
+# ---------------------------------------------------------
+#
+# If several commits are pushed quickly to the same branch,
+# cancel the older run and test only the newest commit.
+#
+concurrency:
+  group: backend-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  test-backend:
+    # This is the job name shown inside the workflow run.
+    name: Authorization and Backend Tests
+
+    # GitHub creates a temporary Linux machine for this job.
+    runs-on: ubuntu-latest
+
+    # These defaults apply to every `run` command below.
+    #
+    # HouseIQ's backend package.json is inside backend/, so
+    # commands such as npm ci and npm test must run there.
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # -----------------------------------------------------
+      # 1. CHECK OUT THE REPOSITORY
+      # -----------------------------------------------------
+      #
+      # Without this step, the runner has no HouseIQ files.
+      #
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+
+      # -----------------------------------------------------
+      # 2. INSTALL NODE
+      # -----------------------------------------------------
+      #
+      # Use Node 20 because the current backend dependencies
+      # require Node 20 or newer.
+      #
+      # npm caching makes later runs faster by reusing downloaded
+      # packages. The lockfile remains the source of truth.
+      #
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+
+      # -----------------------------------------------------
+      # 3. INSTALL EXACT DEPENDENCIES
+      # -----------------------------------------------------
+      #
+      # npm ci installs exactly the package versions represented
+      # by package-lock.json and fails if the package files disagree.
+      #
+      - name: Install backend dependencies
+        run: npm ci
+
+
+      # -----------------------------------------------------
+      # 4. RUN ALL BACKEND TESTS
+      # -----------------------------------------------------
+      #
+      # package.json maps npm test to:
+      #
+      # vitest run
+      #
+      # That includes both:
+      #
+      # tests/authorization.test.js
+      # tests/document_authorization.test.js
+      #
+      - name: Run backend tests
+        run: npm test

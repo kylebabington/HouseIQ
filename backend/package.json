@@ -26,6 +26,8 @@
     "pg": "^8.22.0"
   },
   "devDependencies": {
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3",
     "nodemon": "^3.1.0",
     "supertest": "^7.2.2",
     "vitest": "^4.1.10"
