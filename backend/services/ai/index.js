@@ -1,4 +1,4 @@
-// backend/ai.js
+// backend/services/ai/index.js
 //
 // Compatibility barrel — prefer importing from the focused modules
 // directly in new code:

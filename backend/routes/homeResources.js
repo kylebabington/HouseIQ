@@ -7,21 +7,21 @@ import {
 import {
     createEmbedding,
     vectorToSql,
-} from "../ai.js";
+} from "../services/ai/index.js";
 
 import {
     requireAuth,
-} from "../auth.js";
+} from "../middleware/auth.js";
 
-import { pool } from "../db.js";
+import { pool } from "../db/pool.js";
 
 import {
     requireHomeOwnership,
-} from "../ownership.js";
+} from "../middleware/ownership.js";
 
 import {
     createMemoryRecord,
-} from "../recordHelpers.js";
+} from "../services/recordHelpers.js";
 
 export function createHomeResourcesRouter() {
     const router = Router();

@@ -8,24 +8,24 @@ import {
     createEmbedding,
     generateHouseAgentResponse,
     vectorToSql,
-} from "../ai.js";
+} from "../services/ai/index.js";
 
 import {
     requireAuth,
-} from "../auth.js";
+} from "../middleware/auth.js";
 
-import { pool } from "../db.js";
+import { pool } from "../db/pool.js";
 
 import {
     requireHomeOwnership,
-} from "../ownership.js";
+} from "../middleware/ownership.js";
 
 import {
     createAssetRecord,
     createIssueRecord,
     createMemoryRecord,
     createProjectRecord,
-} from "../recordHelpers.js";
+} from "../services/recordHelpers.js";
 
 export function createAgentRouter() {
     const router = Router();

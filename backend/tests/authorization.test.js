@@ -77,7 +77,7 @@ let testDatabase;
 //
 // req.auth.payload.sub
 //
-vi.mock("../auth.js", () => {
+vi.mock("../middleware/auth.js", () => {
     return {
         requireAuth: (
             req,
@@ -138,7 +138,7 @@ vi.mock("../auth.js", () => {
 //
 // AI behavior belongs in a different test suite.
 //
-vi.mock("../ai.js", () => {
+vi.mock("../services/ai/index.js", () => {
     return {
         createEmbedding:
             vi.fn(async () =>
@@ -189,7 +189,7 @@ vi.mock("../ai.js", () => {
 // - generate a real signed URL
 // - delete a real S3 object
 //
-vi.mock("../s3.js", () => {
+vi.mock("../services/s3.js", () => {
     return {
         uploadDocumentToS3:
             vi.fn(async () => ({
@@ -439,7 +439,7 @@ const mockQuery =
     );
 
 
-vi.mock("../db.js", () => {
+vi.mock("../db/pool.js", () => {
     return {
         pool: {
             query: mockQuery,

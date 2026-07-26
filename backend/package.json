@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "db:schema": "node runschema.js",
+    "db:schema": "node db/runSchema.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:authorization": "vitest run tests/authorization.test.js",

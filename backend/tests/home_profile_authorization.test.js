@@ -54,7 +54,7 @@ let testDatabase;
 // MOCK AUTH0
 // ---------------------------------------------------------
 
-vi.mock("../auth.js", () => {
+vi.mock("../middleware/auth.js", () => {
     return {
         requireAuth: (
             req,
@@ -107,7 +107,7 @@ vi.mock("../auth.js", () => {
 // MOCK DATABASE
 // ---------------------------------------------------------
 
-vi.mock("../db.js", () => {
+vi.mock("../db/pool.js", () => {
     return {
         pool: {
             query:
@@ -124,7 +124,7 @@ vi.mock("../db.js", () => {
 // MOCK EXTERNAL SERVICES
 // ---------------------------------------------------------
 
-vi.mock("../s3.js", () => {
+vi.mock("../services/s3.js", () => {
     return {
         createDocumentDownloadUrl:
             vi.fn(),
@@ -138,7 +138,7 @@ vi.mock("../s3.js", () => {
 });
 
 
-vi.mock("../ai.js", () => {
+vi.mock("../services/ai/index.js", () => {
     return {
         createEmbedding:
             vi.fn(),
