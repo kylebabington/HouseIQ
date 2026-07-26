@@ -27,6 +27,23 @@ import {
     createProjectRecord,
 } from "../services/recordHelpers.js";
 
+import {
+    formatHomeProfile,
+} from "../lib/homeProfile.js";
+
+// Caps on how many side-effect records the agent may create in a
+// single run. These protect against a single message accidentally
+// flooding a home with dozens of records.
+const MAX_MEMORIES_PER_RUN = 3;
+const MAX_ISSUES_PER_RUN = 2;
+const MAX_PROJECTS_PER_RUN = 1;
+const MAX_ASSETS_PER_RUN = 2;
+
+// Profile fields that are internal bookkeeping rather than
+// physical facts about the home, excluded from contextUsed.
+const NON_FACT_PROFILE_FIELD_PATTERN =
+    /^(homeId|metadata|onboarding|profileCreatedAt|profileUpdatedAt)/i;
+
 export function createAgentRouter() {
     const router = Router();
 
@@ -95,35 +112,108 @@ export function createAgentRouter() {
 
 
                 // -------------------------------------------------
-                // 3. RETRIEVE RELEVANT LONG-TERM MEMORIES
+                // 3. LOAD EVERYTHING THE AGENT NEEDS TO KNOW ABOUT
+                //    THIS HOME, IN PARALLEL
                 // -------------------------------------------------
+                //
+                // Profile facts, open issues, active projects, and
+                // known assets all give the agent grounding so it
+                // does not have to guess or invent details, and so
+                // it can avoid creating duplicate records.
+                //
+                const [
+                    profileResult,
+                    issuesResult,
+                    projectsResult,
+                    assetsResult,
+                    memoriesResult,
+                ] = await Promise.all([
+                    pool.query(
+                        `
+                    SELECT *
+                    FROM home_profiles
+                    WHERE home_id = $1
+                    LIMIT 1
+                    `,
+                        [homeId]
+                    ),
 
-                const memoriesResult = await pool.query(
-                    `
-                SELECT
-                    id,
-                    title,
-                    category,
-                    content,
-                    metadata,
-                    importance,
-                    created_at,
-                    embedding <=> $2::VECTOR(1536)
-                        AS similarity_distance
-                FROM memories
-                WHERE home_id = $1
-                  AND embedding IS NOT NULL
-                ORDER BY
-                    embedding <=> $2::VECTOR(1536)
-                LIMIT 8
-                `,
-                    [
-                        homeId,
-                        questionVectorSql,
-                    ]
-                );
+                    pool.query(
+                        `
+                    SELECT *
+                    FROM home_issues
+                    WHERE home_id = $1
+                      AND status NOT IN ('resolved', 'closed')
+                    ORDER BY updated_at DESC
+                    LIMIT 5
+                    `,
+                        [homeId]
+                    ),
+
+                    pool.query(
+                        `
+                    SELECT *
+                    FROM home_projects
+                    WHERE home_id = $1
+                      AND status NOT IN ('completed', 'cancelled')
+                    ORDER BY updated_at DESC
+                    LIMIT 3
+                    `,
+                        [homeId]
+                    ),
+
+                    pool.query(
+                        `
+                    SELECT *
+                    FROM home_assets
+                    WHERE home_id = $1
+                    ORDER BY updated_at DESC
+                    LIMIT 8
+                    `,
+                        [homeId]
+                    ),
+
+                    pool.query(
+                        `
+                    SELECT
+                        id,
+                        title,
+                        category,
+                        content,
+                        metadata,
+                        importance,
+                        created_at,
+                        embedding <=> $2::VECTOR(1536)
+                            AS similarity_distance
+                    FROM memories
+                    WHERE home_id = $1
+                      AND embedding IS NOT NULL
+                    ORDER BY
+                        embedding <=> $2::VECTOR(1536)
+                    LIMIT 8
+                    `,
+                        [
+                            homeId,
+                            questionVectorSql,
+                        ]
+                    ),
+                ]);
 
                 relevantMemories = memoriesResult.rows;
+
+                const issues = issuesResult.rows;
+                const projects = projectsResult.rows;
+                const assets = assetsResult.rows;
+
+                const profile =
+                    profileResult.rows.length > 0
+                        ? formatHomeProfile({
+                            ...profileResult.rows[0],
+                            home_id: home.id,
+                            home_name: home.name,
+                            year_built: home.year_built,
+                        })
+                        : null;
 
 
                 // -------------------------------------------------
@@ -133,7 +223,19 @@ export function createAgentRouter() {
                 agentResponse =
                     await generateHouseAgentResponse(
                         question.trim(),
-                        relevantMemories
+                        {
+                            home: {
+                                id: home.id,
+                                name: home.name,
+                                year_built: home.year_built,
+                                notes: home.notes,
+                            },
+                            profile,
+                            memories: relevantMemories,
+                            issues,
+                            projects,
+                            assets,
+                        }
                     );
 
 
@@ -168,12 +270,38 @@ export function createAgentRouter() {
 
 
                 // -------------------------------------------------
+                // 5b. CAP SIDE EFFECTS BEFORE CREATING RECORDS
+                // -------------------------------------------------
+                //
+                // A single misbehaving or overly eager model response
+                // should never be able to flood a home with dozens of
+                // records. These caps are enforced here regardless of
+                // what the model returned.
+                //
+                const memoriesToCreate = (
+                    agentResponse.memoriesToCreate || []
+                ).slice(0, MAX_MEMORIES_PER_RUN);
+
+                const issuesToCreate = (
+                    agentResponse.issuesToCreate || []
+                ).slice(0, MAX_ISSUES_PER_RUN);
+
+                const projectsToCreate = (
+                    agentResponse.projectsToCreate || []
+                ).slice(0, MAX_PROJECTS_PER_RUN);
+
+                const assetsToCreate = (
+                    agentResponse.assetsToCreate || []
+                ).slice(0, MAX_ASSETS_PER_RUN);
+
+
+                // -------------------------------------------------
                 // 6. CREATE MEMORIES
                 // -------------------------------------------------
 
                 for (
                     const memoryInput of
-                    agentResponse.memoriesToCreate
+                    memoriesToCreate
                 ) {
                     const createdMemory =
                         await createMemoryRecord({
@@ -218,7 +346,7 @@ export function createAgentRouter() {
 
                 for (
                     const issueInput of
-                    agentResponse.issuesToCreate
+                    issuesToCreate
                 ) {
                     const createdIssue =
                         await createIssueRecord({
@@ -263,7 +391,7 @@ export function createAgentRouter() {
 
                 for (
                     const projectInput of
-                    agentResponse.projectsToCreate
+                    projectsToCreate
                 ) {
                     const createdProject =
                         await createProjectRecord({
@@ -316,7 +444,7 @@ export function createAgentRouter() {
 
                 for (
                     const assetInput of
-                    agentResponse.assetsToCreate
+                    assetsToCreate
                 ) {
                     const createdAsset =
                         await createAssetRecord({
@@ -423,6 +551,58 @@ export function createAgentRouter() {
 
 
                 // -------------------------------------------------
+                // 11b. BUILD THE CONTEXT-USED SUMMARY
+                // -------------------------------------------------
+                //
+                // This is computed server-side (never trusted from the
+                // model) so the frontend can show the homeowner exactly
+                // what HouseIQ actually knew about their home when it
+                // answered.
+                //
+                const profileFields = profile
+                    ? Object.entries(profile)
+                        .filter(
+                            ([fieldName, value]) =>
+                                !NON_FACT_PROFILE_FIELD_PATTERN.test(
+                                    fieldName
+                                ) &&
+                                value !== null &&
+                                value !== undefined &&
+                                value !== ""
+                        )
+                        .map(([fieldName]) => fieldName)
+                    : [];
+
+                const contextUsed = {
+                    profileFields,
+
+                    memoryTitles: relevantMemories
+                        .map((memory) => memory.title)
+                        .slice(0, 8),
+
+                    issueTitles: issues.map(
+                        (issue) => issue.title
+                    ),
+
+                    projectTitles: projects.map(
+                        (project) => project.title
+                    ),
+
+                    assetNames: assets.map(
+                        (asset) => asset.name
+                    ),
+
+                    counts: {
+                        memories: relevantMemories.length,
+                        issues: issues.length,
+                        projects: projects.length,
+                        assets: assets.length,
+                        profileFields: profileFields.length,
+                    },
+                };
+
+
+                // -------------------------------------------------
                 // 12. RETURN EVERYTHING THE FRONTEND NEEDS
                 // -------------------------------------------------
 
@@ -452,6 +632,8 @@ export function createAgentRouter() {
 
                     memoriesUsed:
                         relevantMemories,
+
+                    contextUsed,
 
                     agentRunId:
                         agentRun.id,

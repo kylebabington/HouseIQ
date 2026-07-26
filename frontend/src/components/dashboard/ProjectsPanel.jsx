@@ -67,7 +67,7 @@ function ProjectsPanel({ projects }) {
                 {formatCurrency(
                   project.estimated_cost_low
                 )}
-                {" â€“ "}
+                {" – "}
                 {formatCurrency(
                   project.estimated_cost_high
                 )}

@@ -476,6 +476,43 @@ button:disabled {
 
 
 /* --------------------------------------------------------- */
+/* CONTEXT USED                                              */
+/* --------------------------------------------------------- */
+
+.context-used-section {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+
+  border:
+    1px solid rgba(49, 84, 57, 0.14);
+
+  border-radius: 14px;
+  background: #f4f8f2;
+}
+
+.context-used-section h4 {
+  margin-bottom: 0.35rem;
+}
+
+.context-used-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.context-used-list {
+  margin: 0.55rem 0 0;
+  padding-left: 1.15rem;
+  color: var(--forest-dark);
+  font-size: 0.9rem;
+}
+
+.context-used-list li {
+  margin-bottom: 0.25rem;
+}
+
+
+/* --------------------------------------------------------- */
 /* CLARIFYING QUESTIONS                                      */
 /* --------------------------------------------------------- */
 

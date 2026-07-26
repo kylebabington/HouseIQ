@@ -211,6 +211,64 @@ function AgentPanel({
             {agentResponse.answer}
           </div>
 
+          {agentResponse.contextUsed && (
+            <section className="context-used-section">
+              <h4>
+                Used for this answer
+              </h4>
+
+              <p className="context-used-summary">
+                {[
+                  agentResponse.contextUsed
+                    .counts?.profileFields
+                    ? `${agentResponse.contextUsed.counts.profileFields} profile facts`
+                    : null,
+                  agentResponse.contextUsed
+                    .counts?.memories
+                    ? `${agentResponse.contextUsed.counts.memories} memories`
+                    : null,
+                  agentResponse.contextUsed
+                    .counts?.issues
+                    ? `${agentResponse.contextUsed.counts.issues} open issues`
+                    : null,
+                  agentResponse.contextUsed
+                    .counts?.projects
+                    ? `${agentResponse.contextUsed.counts.projects} projects`
+                    : null,
+                  agentResponse.contextUsed
+                    .counts?.assets
+                    ? `${agentResponse.contextUsed.counts.assets} assets`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") ||
+                  "No stored home context yet"}
+              </p>
+
+              {(agentResponse.contextUsed
+                .issueTitles?.length > 0 ||
+                agentResponse.contextUsed
+                  .memoryTitles?.length > 0) && (
+                <ul className="context-used-list">
+                  {agentResponse.contextUsed.issueTitles
+                    ?.slice(0, 3)
+                    .map((title) => (
+                      <li key={`issue-${title}`}>
+                        Issue: {title}
+                      </li>
+                    ))}
+                  {agentResponse.contextUsed.memoryTitles
+                    ?.slice(0, 3)
+                    .map((title) => (
+                      <li key={`memory-${title}`}>
+                        Memory: {title}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </section>
+          )}
+
           {agentResponse.needsMoreInfo &&
             agentResponse
               .clarifyingQuestions
@@ -249,7 +307,7 @@ function AgentPanel({
                       className="action-item"
                     >
                       <span className="action-icon">
-                        âœ“
+                        ✓
                       </span>
 
                       <div>

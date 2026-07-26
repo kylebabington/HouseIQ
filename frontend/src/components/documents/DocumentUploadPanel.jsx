@@ -304,7 +304,7 @@ function DocumentUploadPanel({
                       className="action-item"
                     >
                       <span className="action-icon">
-                        âœ“
+                        ✓
                       </span>
 
                       <div>
