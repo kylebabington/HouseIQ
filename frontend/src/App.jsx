@@ -3,6 +3,7 @@
 import {
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
 } from "react";
 
@@ -169,6 +170,9 @@ function App() {
   // The home currently being viewed
   const [selectedHome, setSelectedHome] =
     useState(null);
+
+  // Ref to track the current selected home ID for async operations
+  const selectedHomeIdRef = useRef(null);
 
   // Form for creating a home
   const [homeForm, setHomeForm] = useState({
@@ -434,6 +438,8 @@ function App() {
     });
 
   useEffect(() => {
+    selectedHomeIdRef.current = selectedHome?.id ?? null;
+
     if (!selectedHome?.id) {
       return;
     }
@@ -609,7 +615,7 @@ function App() {
           `${API_URL}/homes/${homeId}/profile`
         );
 
-      if (selectedHome?.id === homeId) {
+      if (selectedHomeIdRef.current === homeId) {
         setHomeProfile(
           response.data
         );
@@ -620,7 +626,7 @@ function App() {
         error
       );
 
-      if (selectedHome?.id === homeId) {
+      if (selectedHomeIdRef.current === homeId) {
         setHomeProfile(null);
 
         setHomeProfileError(
@@ -629,7 +635,7 @@ function App() {
         );
       }
     } finally {
-      if (selectedHome?.id === homeId) {
+      if (selectedHomeIdRef.current === homeId) {
         setIsLoadingHomeProfile(false);
       }
     }
