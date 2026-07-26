@@ -912,6 +912,40 @@ function HomeOnboarding({
         "completed";
 
 
+    const currentField =
+        currentQuestion?.field;
+
+    const currentKnownValue =
+        currentField
+            ? profile?.[
+                currentField
+            ]
+            : undefined;
+
+
+    // Seed the form from any known profile value for the active step
+    // so resume/refresh and editor-filled fields do not look blank.
+    useEffect(() => {
+        if (!currentField) {
+            setAnswer("");
+            return;
+        }
+
+        setAnswer(
+            hasKnownValue(
+                currentKnownValue
+            )
+                ? String(
+                    currentKnownValue
+                )
+                : ""
+        );
+    }, [
+        currentField,
+        currentKnownValue,
+    ]);
+
+
     // Heal inconsistent state: in_progress with no resolvable
     // question (invalid/missing step and every catalog field known).
     useEffect(() => {
@@ -980,19 +1014,31 @@ function HomeOnboarding({
     function getNextQuestion(
         currentIndex
     ) {
-        const nextIndex =
-            currentIndex + 1;
-
-        if (
-            nextIndex >=
-            ONBOARDING_QUESTIONS.length
+        for (
+            let index =
+                currentIndex +
+                1;
+            index <
+            ONBOARDING_QUESTIONS.length;
+            index += 1
         ) {
-            return null;
+            const question =
+                ONBOARDING_QUESTIONS[
+                    index
+                ];
+
+            if (
+                !hasKnownValue(
+                    profile?.[
+                        question.field
+                    ]
+                )
+            ) {
+                return question;
+            }
         }
 
-        return ONBOARDING_QUESTIONS[
-            nextIndex
-        ];
+        return null;
     }
 
 
