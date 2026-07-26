@@ -439,6 +439,24 @@ NOT NULL DEFAULT '[]'::JSONB;
 ALTER TABLE home_profiles
 ADD COLUMN IF NOT EXISTS lot_size_acres DECIMAL;
 
+-- Backfill from legacy column only if it exists.
+-- Exclude zero values to satisfy the > 0 constraint.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'home_profiles'
+      AND column_name = 'lot_size_sq_ft'
+  ) THEN
+    UPDATE home_profiles
+    SET lot_size_acres = lot_size_sq_ft / 43560.0
+    WHERE lot_size_sq_ft IS NOT NULL
+      AND lot_size_sq_ft > 0
+      AND lot_size_acres IS NULL;
+  END IF;
+END $$;
+
 ALTER TABLE home_profiles
 DROP COLUMN IF EXISTS lot_size_sq_ft;
 

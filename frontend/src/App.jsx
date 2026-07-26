@@ -3,6 +3,7 @@
 import {
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
 } from "react";
 
@@ -169,6 +170,9 @@ function App() {
   // The home currently being viewed
   const [selectedHome, setSelectedHome] =
     useState(null);
+
+  // Ref to track the current selected home ID for async operations
+  const selectedHomeIdRef = useRef(null);
 
   // Form for creating a home
   const [homeForm, setHomeForm] = useState({
@@ -434,6 +438,8 @@ function App() {
     });
 
   useEffect(() => {
+    selectedHomeIdRef.current = selectedHome?.id ?? null;
+
     if (!selectedHome?.id) {
       return;
     }
@@ -609,23 +615,29 @@ function App() {
           `${API_URL}/homes/${homeId}/profile`
         );
 
-      setHomeProfile(
-        response.data
-      );
+      if (selectedHomeIdRef.current === homeId) {
+        setHomeProfile(
+          response.data
+        );
+      }
     } catch (error) {
       console.error(
         "Error fetching home profile:",
         error
       );
 
-      setHomeProfile(null);
+      if (selectedHomeIdRef.current === homeId) {
+        setHomeProfile(null);
 
-      setHomeProfileError(
-        error.response?.data?.error ||
-        "Could not load the home profile."
-      );
+        setHomeProfileError(
+          error.response?.data?.error ||
+          "Could not load the home profile."
+        );
+      }
     } finally {
-      setIsLoadingHomeProfile(false);
+      if (selectedHomeIdRef.current === homeId) {
+        setIsLoadingHomeProfile(false);
+      }
     }
   }
 
