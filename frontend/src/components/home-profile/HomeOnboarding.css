@@ -1,0 +1,340 @@
+/* frontend/src/components/home-profile/HomeOnboarding.css */
+
+
+/* --------------------------------------------------------- */
+/* ONBOARDING SHELL                                          */
+/* --------------------------------------------------------- */
+
+.home-onboarding {
+    display: grid;
+    gap: 1rem;
+
+    padding: 1.2rem;
+
+    border:
+        1px solid rgba(55, 84, 60, 0.18);
+
+    border-radius: 22px;
+
+    background:
+        linear-gradient(145deg,
+            #f5faf1,
+            #e8f3e4);
+}
+
+
+.home-onboarding h4 {
+    margin-bottom: 0.4rem;
+    font-size: 1.3rem;
+}
+
+
+.home-onboarding p {
+    margin-bottom: 0;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+
+.home-onboarding-introduction {
+    grid-template-columns:
+        minmax(0, 1fr) auto;
+
+    align-items: center;
+}
+
+
+.home-onboarding-complete {
+    background:
+        linear-gradient(145deg,
+            #f1f8ee,
+            #e0f0dc);
+}
+
+
+/* --------------------------------------------------------- */
+/* QUESTION HEADER                                           */
+/* --------------------------------------------------------- */
+
+.home-onboarding-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+
+.home-onboarding-count {
+    flex-shrink: 0;
+
+    padding: 0.42rem 0.72rem;
+
+    border-radius: 999px;
+
+    background:
+        rgba(47, 93, 58, 0.11);
+
+    color: var(--forest-dark);
+
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+
+/* --------------------------------------------------------- */
+/* PROGRESS                                                  */
+/* --------------------------------------------------------- */
+
+.home-onboarding-progress {
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1fr) auto;
+
+    align-items: center;
+    gap: 0.75rem;
+}
+
+
+.home-onboarding-progress-track {
+    overflow: hidden;
+
+    height: 10px;
+
+    border-radius: 999px;
+
+    background: #d8e5d5;
+}
+
+
+.home-onboarding-progress-fill {
+    height: 100%;
+
+    border-radius: inherit;
+
+    background:
+        linear-gradient(90deg,
+            var(--forest),
+            var(--forest-light));
+
+    transition:
+        width 220ms ease;
+}
+
+
+.home-onboarding-progress>span {
+    color: var(--forest-dark);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+
+/* --------------------------------------------------------- */
+/* FORM                                                      */
+/* --------------------------------------------------------- */
+
+.home-onboarding-form {
+    display: grid;
+    gap: 1rem;
+}
+
+
+.home-onboarding-options {
+    display: grid;
+    grid-template-columns:
+        repeat(3,
+            minmax(0, 1fr));
+
+    gap: 0.7rem;
+}
+
+
+.home-onboarding-option {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+
+    min-width: 0;
+
+    padding: 0.85rem;
+
+    border:
+        1px solid rgba(61, 92, 66, 0.2);
+
+    border-radius: 14px;
+
+    background: white;
+
+    cursor: pointer;
+
+    transition:
+        border-color 150ms ease,
+        background 150ms ease,
+        transform 150ms ease;
+}
+
+
+.home-onboarding-option:hover {
+    transform:
+        translateY(-1px);
+
+    border-color:
+        var(--forest-light);
+
+    background: #f8fbf5;
+}
+
+
+.home-onboarding-option.selected {
+    border-color:
+        var(--forest);
+
+    background: #dfeeda;
+}
+
+
+.home-onboarding-option input {
+    width: auto;
+    margin: 0;
+}
+
+
+.home-onboarding-option span {
+    min-width: 0;
+
+    color: var(--forest-dark);
+
+    font-size: 0.9rem;
+    font-weight: 750;
+}
+
+
+.home-onboarding-number-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+
+.home-onboarding-number-field>span {
+    color: var(--forest-dark);
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+
+
+.home-onboarding-number-field>div {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+
+.home-onboarding-number-field input {
+    max-width: 300px;
+}
+
+
+.home-onboarding-number-field div>span {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+
+/* --------------------------------------------------------- */
+/* ACTIONS                                                   */
+/* --------------------------------------------------------- */
+
+.home-onboarding-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+
+.home-onboarding-complete-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+
+.home-onboarding-complete-actions>span {
+    color: var(--forest-dark);
+    font-size: 0.9rem;
+    font-weight: 750;
+}
+
+
+/* --------------------------------------------------------- */
+/* MESSAGES                                                  */
+/* --------------------------------------------------------- */
+
+.home-onboarding-error,
+.home-onboarding-success {
+    padding: 0.8rem 0.9rem;
+
+    border-radius: 13px;
+
+    font-weight: 700;
+}
+
+
+.home-onboarding-error {
+    border:
+        1px solid rgba(139, 54, 45, 0.24);
+
+    background: #fff1ef;
+
+    color: #812f26 !important;
+}
+
+
+.home-onboarding-success {
+    border:
+        1px solid rgba(45, 111, 57, 0.22);
+
+    background: #e9f7e8;
+
+    color: #285932 !important;
+}
+
+
+/* --------------------------------------------------------- */
+/* RESPONSIVE                                                */
+/* --------------------------------------------------------- */
+
+@media (max-width: 900px) {
+    .home-onboarding-options {
+        grid-template-columns:
+            repeat(2,
+                minmax(0, 1fr));
+    }
+}
+
+
+@media (max-width: 650px) {
+
+    .home-onboarding-introduction,
+    .home-onboarding-header,
+    .home-onboarding-complete-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+
+    .home-onboarding-options {
+        grid-template-columns: 1fr;
+    }
+
+
+    .home-onboarding-actions {
+        display: grid;
+        grid-template-columns:
+            1fr 1fr;
+    }
+
+
+    .home-onboarding-actions button {
+        width: 100%;
+    }
+}
