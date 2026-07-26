@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS home_profiles (
   -- Garage and lot
   garage_type STRING,
   garage_spaces INT,
-  lot_size_sq_ft INT,
+  lot_size_acres DECIMAL,
 
   -- Tracks progress through the future onboarding flow.
   onboarding_status STRING
@@ -143,8 +143,8 @@ CREATE TABLE IF NOT EXISTS home_profiles (
 
   CONSTRAINT home_profiles_lot_size_check
     CHECK (
-      lot_size_sq_ft IS NULL
-      OR lot_size_sq_ft > 0
+      lot_size_acres IS NULL
+      OR lot_size_acres > 0
     ),
 
   CONSTRAINT home_profiles_onboarding_status_check
@@ -430,6 +430,17 @@ NOT NULL DEFAULT '[]'::JSONB;
 ALTER TABLE agent_runs
 ADD COLUMN IF NOT EXISTS actions_taken JSONB
 NOT NULL DEFAULT '[]'::JSONB;
+
+
+-- Home profile lot size is stored in acres (decimal), not
+-- square feet. Add the acres column for existing tables, then
+-- drop the legacy square-foot column when present.
+--
+ALTER TABLE home_profiles
+ADD COLUMN IF NOT EXISTS lot_size_acres DECIMAL;
+
+ALTER TABLE home_profiles
+DROP COLUMN IF EXISTS lot_size_sq_ft;
 
 
 -- ---------------------------------------------------------

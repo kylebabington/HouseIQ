@@ -469,7 +469,7 @@ beforeEach(() => {
                         garage_spaces:
                             null,
 
-                        lot_size_sq_ft:
+                        lot_size_acres:
                             null,
 
                         onboarding_status:
@@ -684,8 +684,8 @@ function buildJoinedRow(
             profile?.garage_spaces ??
             null,
 
-        lot_size_sq_ft:
-            profile?.lot_size_sq_ft ??
+        lot_size_acres:
+            profile?.lot_size_acres ??
             null,
 
         onboarding_status:
@@ -1101,7 +1101,7 @@ describe(
                     garage_spaces:
                         null,
 
-                    lot_size_sq_ft:
+                    lot_size_acres:
                         null,
 
                     onboarding_status:

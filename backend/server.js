@@ -202,8 +202,8 @@ const HOME_PROFILE_FIELDS = {
     garageSpaces:
         "garage_spaces",
 
-    lotSizeSqFt:
-        "lot_size_sq_ft",
+    lotSizeAcres:
+        "lot_size_acres",
 
     onboardingStatus:
         "onboarding_status",
@@ -246,19 +246,18 @@ const HOME_PROFILE_INTEGER_FIELDS =
         "halfBathrooms",
         "electricalServiceAmps",
         "garageSpaces",
-        "lotSizeSqFt",
     ]);
 
 
-// The number of stories may contain a decimal such as:
+// Decimal fields may contain fractional values such as:
 //
-// 1
-// 1.5
-// 2
+// stories: 1.5
+// lotSizeAcres: 0.25
 //
 const HOME_PROFILE_DECIMAL_FIELDS =
     new Set([
         "stories",
+        "lotSizeAcres",
     ]);
 
 
@@ -566,8 +565,13 @@ function formatHomeProfile(
         garageSpaces:
             row.garage_spaces,
 
-        lotSizeSqFt:
-            row.lot_size_sq_ft,
+        lotSizeAcres:
+            row.lot_size_acres === null ||
+                row.lot_size_acres === undefined
+                ? null
+                : Number(
+                    row.lot_size_acres
+                ),
 
         onboardingStatus:
             row.onboarding_status ||
@@ -1397,7 +1401,7 @@ app.get(
 
                         home_profiles.garage_type,
                         home_profiles.garage_spaces,
-                        home_profiles.lot_size_sq_ft,
+                        home_profiles.lot_size_acres,
 
                         home_profiles.onboarding_status,
                         home_profiles.onboarding_step,

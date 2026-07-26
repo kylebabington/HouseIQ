@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useEffectEvent,
   useState,
 } from "react";
 
@@ -12,6 +13,8 @@ import {
 import api, {
   setAccessTokenProvider,
 } from "./api.js";
+
+import HomeProfile from "./components/home-profile/HomeProfile.jsx";
 
 import "./index.css";
 
@@ -156,42 +159,6 @@ function App() {
     getAccessTokenSilently,
   } = useAuth0();
 
-
-  // -----------------------------------------------------
-  // CONNECT AUTH0 TO THE AXIOS CLIENT
-  // -----------------------------------------------------
-  //
-  // The shared API client calls this provider before every
-  // backend request.
-  //
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setAccessTokenProvider(null);
-      return;
-    }
-
-    setAccessTokenProvider(
-      async () => {
-        return getAccessTokenSilently({
-          authorizationParams: {
-            audience:
-              import.meta.env
-                .VITE_AUTH0_AUDIENCE,
-
-            scope:
-              "openid profile email",
-          },
-        });
-      }
-    );
-
-    return () => {
-      setAccessTokenProvider(null);
-    };
-  }, [
-    isAuthenticated,
-    getAccessTokenSilently,
-  ]);
   // -----------------------------------------------------
   // HOME STATE
   // -----------------------------------------------------
@@ -234,6 +201,34 @@ function App() {
   // Uploaded inspection reports, invoices, manuals,
   // warranties, receipts, and other documents.
   const [documents, setDocuments] = useState([]);
+
+  // -----------------------------------------------------
+  // STRUCTURED HOME PROFILE
+  // -----------------------------------------------------
+  //
+  // The detailed physical profile returned by:
+  //
+  // GET /api/homes/:homeId/profile
+  //
+  const [
+    homeProfile,
+    setHomeProfile,
+  ] = useState(null);
+
+
+  // True while the profile request is running.
+  const [
+    isLoadingHomeProfile,
+    setIsLoadingHomeProfile,
+  ] = useState(false);
+
+
+  // Stores profile-specific loading errors separately from
+  // issue, project, asset, memory, and document errors.
+  const [
+    homeProfileError,
+    setHomeProfileError,
+  ] = useState("");
 
 
   // -----------------------------------------------------
@@ -399,6 +394,14 @@ function App() {
   // API client receives its token provider before this effect
   // calls fetchHomes().
   //
+  // useEffectEvent keeps fetchHomes out of the dependency
+  // array without disabling the exhaustive-deps rule.
+  //
+  const loadHomesWhenAuthenticated =
+    useEffectEvent(() => {
+      fetchHomes();
+    });
+
   useEffect(() => {
     // Auth0 is still checking whether a session exists.
     if (isAuthLoading) {
@@ -410,7 +413,7 @@ function App() {
       return;
     }
 
-    fetchHomes();
+    loadHomesWhenAuthenticated();
   }, [
     isAuthLoading,
     isAuthenticated,
@@ -419,27 +422,69 @@ function App() {
   // -----------------------------------------------------
   // REFRESH DASHBOARD WHEN HOME CHANGES
   // -----------------------------------------------------
+  //
+  // Home-scoped UI resets happen in selectHome() when the
+  // user (or fetchHomes) picks a home. This effect only
+  // loads data for the current selection.
+  //
+  const loadSelectedHomeData =
+    useEffectEvent((homeId) => {
+      refreshHomeDashboard(homeId);
+      fetchHomeProfile(homeId);
+    });
 
   useEffect(() => {
-    if (!selectedHome) {
+    if (!selectedHome?.id) {
       return;
     }
 
-    // Clear conversation results from the previously selected home.
+    loadSelectedHomeData(
+      selectedHome.id
+    );
+  }, [selectedHome]);
+
+
+  // -----------------------------------------------------
+  // RESET UI SCOPED TO THE CURRENT HOME
+  // -----------------------------------------------------
+  //
+  // Called from selectHome before changing selectedHome so
+  // we do not need synchronous setState inside an effect.
+  //
+  function resetHomeScopedUi() {
     setAgentResponse(null);
     setAskError("");
 
-    // Clear document upload results from the previous home.
     setDocumentUploadResult(null);
     setDocumentUploadError("");
     setSelectedDocumentFile(null);
 
-    // Show the Issues tab first for every newly selected home.
-    setActiveTab("issues");
+    setHomeProfile(null);
+    setHomeProfileError("");
 
-    // Load all records for the selected home.
-    refreshHomeDashboard(selectedHome.id);
-  }, [selectedHome]);
+    // Start each home on its profile.
+    setActiveTab("profile");
+  }
+
+
+  // -----------------------------------------------------
+  // SELECT A HOME
+  // -----------------------------------------------------
+
+  function selectHome(home) {
+    if (!home) {
+      return;
+    }
+
+    if (
+      selectedHome?.id === home.id
+    ) {
+      return;
+    }
+
+    resetHomeScopedUi();
+    setSelectedHome(home);
+  }
 
 
   // -----------------------------------------------------
@@ -459,7 +504,7 @@ function App() {
         response.data.length > 0 &&
         !selectedHome
       ) {
-        setSelectedHome(response.data[0]);
+        selectHome(response.data[0]);
       }
     } catch (error) {
       console.error(
@@ -544,6 +589,76 @@ function App() {
     }
   }
 
+  // -----------------------------------------------------
+  // FETCH STRUCTURED HOME PROFILE
+  // -----------------------------------------------------
+
+  async function fetchHomeProfile(
+    homeId
+  ) {
+    if (!homeId) {
+      return;
+    }
+
+    try {
+      setIsLoadingHomeProfile(true);
+      setHomeProfileError("");
+
+      const response =
+        await api.get(
+          `${API_URL}/homes/${homeId}/profile`
+        );
+
+      setHomeProfile(
+        response.data
+      );
+    } catch (error) {
+      console.error(
+        "Error fetching home profile:",
+        error
+      );
+
+      setHomeProfile(null);
+
+      setHomeProfileError(
+        error.response?.data?.error ||
+        "Could not load the home profile."
+      );
+    } finally {
+      setIsLoadingHomeProfile(false);
+    }
+  }
+
+
+  // -----------------------------------------------------
+  // SAVE STRUCTURED HOME PROFILE
+  // -----------------------------------------------------
+
+  async function saveHomeProfile(
+    profileUpdates
+  ) {
+    if (!selectedHome?.id) {
+      throw new Error(
+        "Select a home before updating its profile."
+      );
+    }
+
+    const response =
+      await api.patch(
+        `${API_URL}/homes/${selectedHome.id}/profile`,
+        profileUpdates
+      );
+
+    const updatedProfile =
+      response.data;
+
+    setHomeProfile(
+      updatedProfile
+    );
+
+    return updatedProfile;
+  }
+
 
   // -----------------------------------------------------
   // CREATE A HOME
@@ -582,7 +697,7 @@ function App() {
         ...currentHomes,
       ]);
 
-      setSelectedHome(newHome);
+      selectHome(newHome);
 
       setHomeForm({
         name: "",
@@ -911,6 +1026,30 @@ function App() {
     }
   }
 
+  // -----------------------------------------------------
+  // RENDER STRUCTURED HOME PROFILE
+  // -----------------------------------------------------
+
+  function renderHomeProfile() {
+    return (
+      <HomeProfile
+        key={
+          selectedHome?.id ||
+          "no-home"
+        }
+        profile={homeProfile}
+        isLoading={
+          isLoadingHomeProfile
+        }
+        loadError={
+          homeProfileError
+        }
+        onSave={
+          saveHomeProfile
+        }
+      />
+    );
+  }
 
   // -----------------------------------------------------
   // RENDER ISSUE CARDS
@@ -1500,6 +1639,9 @@ function App() {
 
   function renderActiveTab() {
     switch (activeTab) {
+      case "profile":
+        return renderHomeProfile();
+
       case "projects":
         return renderProjects();
 
@@ -1762,9 +1904,7 @@ function App() {
                     : "home-card"
                 }
                 onClick={() =>
-                  setSelectedHome(
-                    home
-                  )
+                  selectHome(home)
                 }
               >
                 <strong>
@@ -1816,18 +1956,24 @@ function App() {
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() =>
+                  onClick={() => {
                     refreshHomeDashboard(
                       selectedHome.id
-                    )
-                  }
+                    );
+
+                    fetchHomeProfile(
+                      selectedHome.id
+                    );
+                  }}
                   disabled={
-                    isLoadingDashboard
+                    isLoadingDashboard ||
+                    isLoadingHomeProfile
                   }
                 >
-                  {isLoadingDashboard
+                  {isLoadingDashboard ||
+                    isLoadingHomeProfile
                     ? "Refreshing..."
-                    : "Refresh Records"}
+                    : "Refresh Home"}
                 </button>
               </header>
 
@@ -2402,6 +2548,23 @@ function App() {
                   className="tab-list"
                   aria-label="Home records"
                 >
+
+                  <button
+                    type="button"
+                    className={
+                      activeTab === "profile"
+                        ? "dashboard-tab active"
+                        : "dashboard-tab"
+                    }
+                    onClick={() =>
+                      setActiveTab(
+                        "profile"
+                      )
+                    }
+                  >
+                    Profile
+                  </button>
+
                   <button
                     type="button"
                     className={
