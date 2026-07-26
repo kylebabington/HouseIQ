@@ -5,6 +5,8 @@ import {
     useState,
 } from "react";
 
+import HomeOnboarding from "./HomeOnboarding";
+
 import "./HomeProfile.css";
 
 
@@ -939,6 +941,7 @@ function HomeProfile({
     return (
         <section className="home-profile">
             <header className="home-profile-header">
+
                 <div>
                     <p className="eyebrow">
                         Structured home record
@@ -976,6 +979,14 @@ function HomeProfile({
                     </button>
                 )}
             </header>
+            <HomeOnboarding
+                profile={
+                    profile
+                }
+                onSave={
+                    onSave
+                }
+            />
 
 
             <div className="profile-progress-card">
