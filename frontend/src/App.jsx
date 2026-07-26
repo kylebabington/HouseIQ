@@ -2,18 +2,23 @@
 
 import {
   useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
 } from "react";
 
 import {
   useAuth0,
 } from "@auth0/auth0-react";
 
-import api, {
+import {
   setAccessTokenProvider,
 } from "./api.js";
+
+import useHomeDashboard from "./hooks/useHomeDashboard.js";
+
+import getAuthScreen from "./components/auth/getAuthScreen.jsx";
+
+import AgentPanel from "./components/agent/AgentPanel.jsx";
+import DocumentUploadPanel from "./components/documents/DocumentUploadPanel.jsx";
+import ManualMemoryPanel from "./components/memories/ManualMemoryPanel.jsx";
 
 import HomeProfile from "./components/home-profile/HomeProfile.jsx";
 
@@ -23,25 +28,7 @@ import AssetsPanel from "./components/dashboard/AssetsPanel.jsx";
 import MemoriesPanel from "./components/dashboard/MemoriesPanel.jsx";
 import DocumentsPanel from "./components/dashboard/DocumentsPanel.jsx";
 
-import {
-  formatCurrency,
-  formatDate,
-  formatFileSize,
-  formatLabel,
-} from "./utils/formatters.js";
-
 import "./index.css";
-
-
-// ---------------------------------------------------------
-// API CONFIGURATION
-// ---------------------------------------------------------
-//
-// Your Express backend runs locally on port 5000.
-//
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:5000/api";
 
 
 // ---------------------------------------------------------
@@ -63,184 +50,6 @@ function App() {
     getAccessTokenSilently,
   } = useAuth0();
 
-  // -----------------------------------------------------
-  // HOME STATE
-  // -----------------------------------------------------
-
-  // Every home returned by GET /api/homes
-  const [homes, setHomes] = useState([]);
-
-  // The home currently being viewed
-  const [selectedHome, setSelectedHome] =
-    useState(null);
-
-  // Ref to track the current selected home ID for async operations
-  const selectedHomeIdRef = useRef(null);
-
-  // Form for creating a home
-  const [homeForm, setHomeForm] = useState({
-    name: "",
-    yearBuilt: "",
-    notes: "",
-  });
-
-
-  // -----------------------------------------------------
-  // DASHBOARD DATA
-  // -----------------------------------------------------
-
-  // -----------------------------------------------------
-  // DASHBOARD DATA
-  // -----------------------------------------------------
-
-  // Problems that HouseIQ is tracking.
-  const [issues, setIssues] = useState([]);
-
-  // Multi-step repair or maintenance plans.
-  const [projects, setProjects] = useState([]);
-
-  // Appliances, systems, tools, and equipment.
-  const [assets, setAssets] = useState([]);
-
-  // Permanent long-term facts about the home.
-  const [memories, setMemories] = useState([]);
-
-  // Uploaded inspection reports, invoices, manuals,
-  // warranties, receipts, and other documents.
-  const [documents, setDocuments] = useState([]);
-
-  // -----------------------------------------------------
-  // STRUCTURED HOME PROFILE
-  // -----------------------------------------------------
-  //
-  // The detailed physical profile returned by:
-  //
-  // GET /api/homes/:homeId/profile
-  //
-  const [
-    homeProfile,
-    setHomeProfile,
-  ] = useState(null);
-
-
-  // True while the profile request is running.
-  const [
-    isLoadingHomeProfile,
-    setIsLoadingHomeProfile,
-  ] = useState(false);
-
-
-  // Stores profile-specific loading errors separately from
-  // issue, project, asset, memory, and document errors.
-  const [
-    homeProfileError,
-    setHomeProfileError,
-  ] = useState("");
-
-
-  // -----------------------------------------------------
-  // DASHBOARD UI STATE
-  // -----------------------------------------------------
-
-  // Controls which dashboard tab is visible.
-  const [activeTab, setActiveTab] =
-    useState("issues");
-
-  // True while dashboard data is loading.
-  const [
-    isLoadingDashboard,
-    setIsLoadingDashboard,
-  ] = useState(false);
-
-  // Stores dashboard loading errors.
-  const [
-    dashboardError,
-    setDashboardError,
-  ] = useState("");
-
-
-  // -----------------------------------------------------
-  // HOUSEIQ AGENT STATE
-  // -----------------------------------------------------
-
-  // The natural-language message entered by the user.
-  const [question, setQuestion] = useState("");
-
-  // The complete structured response from /ask.
-  //
-  // This replaces the old:
-  //
-  // const [answer, setAnswer] = useState("");
-  //
-  const [
-    agentResponse,
-    setAgentResponse,
-  ] = useState(null);
-
-  const [isAsking, setIsAsking] =
-    useState(false);
-
-  const [askError, setAskError] =
-    useState("");
-
-  // -----------------------------------------------------
-  // DOCUMENT UPLOAD STATE
-  // -----------------------------------------------------
-
-  // The actual File object selected in the browser.
-  //
-  // This is not the filename string.
-  // It is the browser's representation of the uploaded file.
-  const [
-    selectedDocumentFile,
-    setSelectedDocumentFile,
-  ] = useState(null);
-
-  // The category sent to the backend as documentType.
-  const [
-    selectedDocumentType,
-    setSelectedDocumentType,
-  ] = useState("inspection");
-
-  // True while the document is uploading and being analyzed.
-  const [
-    isUploadingDocument,
-    setIsUploadingDocument,
-  ] = useState(false);
-
-  // Stores a user-friendly upload error.
-  const [
-    documentUploadError,
-    setDocumentUploadError,
-  ] = useState("");
-
-  // Stores the complete response from the document upload route.
-  //
-  // This lets the UI show:
-  // - the document summary
-  // - what records were created
-  // - extracted metadata
-  const [
-    documentUploadResult,
-    setDocumentUploadResult,
-  ] = useState(null);
-
-
-  // -----------------------------------------------------
-  // MANUAL MEMORY TESTING STATE
-  // -----------------------------------------------------
-
-  const [memoryForm, setMemoryForm] =
-    useState({
-      title: "",
-      category: "general",
-      content: "",
-    });
-
-
-  // -----------------------------------------------------
-  // LOAD HOMES ON FIRST RENDER
-  // -----------------------------------------------------
 
   // -----------------------------------------------------
   // CONNECT AUTH0 TO THE SHARED API CLIENT
@@ -292,654 +101,60 @@ function App() {
 
 
   // -----------------------------------------------------
-  // LOAD HOMES AFTER AUTHENTICATION
+  // HOME AND DASHBOARD STATE
   // -----------------------------------------------------
   //
-  // This effect is declared after the token-provider effect.
+  // useHomeDashboard is called after the effect above so
+  // React runs the token-provider effect first. The shared
+  // API client therefore has a token provider before the
+  // hook fetches any private home data.
   //
-  // React runs effects in declaration order, so the shared
-  // API client receives its token provider before this effect
-  // calls fetchHomes().
-  //
-  // useEffectEvent keeps fetchHomes out of the dependency
-  // array without disabling the exhaustive-deps rule.
-  //
-  const loadHomesWhenAuthenticated =
-    useEffectEvent(() => {
-      fetchHomes();
-    });
+  const {
+    homes,
+    selectedHome,
+    homeForm,
+    setHomeForm,
+    selectHome,
+    createHome,
 
-  useEffect(() => {
-    // Auth0 is still checking whether a session exists.
-    if (isAuthLoading) {
-      return;
-    }
+    issues,
+    projects,
+    assets,
+    memories,
+    documents,
 
-    // Never request private home data for a logged-out user.
-    if (!isAuthenticated) {
-      return;
-    }
+    homeProfile,
+    isLoadingHomeProfile,
+    homeProfileError,
+    fetchHomeProfile,
+    saveHomeProfile,
 
-    loadHomesWhenAuthenticated();
-  }, [
-    isAuthLoading,
+    activeTab,
+    setActiveTab,
+    isLoadingDashboard,
+    dashboardError,
+    refreshHomeDashboard,
+
+    selectedDocumentFile,
+    setSelectedDocumentFile,
+    selectedDocumentType,
+    setSelectedDocumentType,
+    isUploadingDocument,
+    documentUploadError,
+    setDocumentUploadError,
+    documentUploadResult,
+    setDocumentUploadResult,
+    uploadDocument,
+    openOriginalDocument,
+
+    memoryForm,
+    setMemoryForm,
+    createMemory,
+  } = useHomeDashboard({
     isAuthenticated,
-  ]);
+    isAuthLoading,
+  });
 
-  // -----------------------------------------------------
-  // REFRESH DASHBOARD WHEN HOME CHANGES
-  // -----------------------------------------------------
-  //
-  // Home-scoped UI resets happen in selectHome() when the
-  // user (or fetchHomes) picks a home. This effect only
-  // loads data for the current selection.
-  //
-  const loadSelectedHomeData =
-    useEffectEvent((homeId) => {
-      refreshHomeDashboard(homeId);
-      fetchHomeProfile(homeId);
-    });
-
-  useEffect(() => {
-    selectedHomeIdRef.current = selectedHome?.id ?? null;
-
-    if (!selectedHome?.id) {
-      return;
-    }
-
-    loadSelectedHomeData(
-      selectedHome.id
-    );
-  }, [selectedHome]);
-
-
-  // -----------------------------------------------------
-  // RESET UI SCOPED TO THE CURRENT HOME
-  // -----------------------------------------------------
-  //
-  // Called from selectHome before changing selectedHome so
-  // we do not need synchronous setState inside an effect.
-  //
-  function resetHomeScopedUi() {
-    setAgentResponse(null);
-    setAskError("");
-
-    setDocumentUploadResult(null);
-    setDocumentUploadError("");
-    setSelectedDocumentFile(null);
-
-    setHomeProfile(null);
-    setHomeProfileError("");
-
-    // Start each home on its profile.
-    setActiveTab("profile");
-  }
-
-
-  // -----------------------------------------------------
-  // SELECT A HOME
-  // -----------------------------------------------------
-
-  function selectHome(home) {
-    if (!home) {
-      return;
-    }
-
-    if (
-      selectedHome?.id === home.id
-    ) {
-      return;
-    }
-
-    resetHomeScopedUi();
-    setSelectedHome(home);
-  }
-
-
-  // -----------------------------------------------------
-  // FETCH HOMES
-  // -----------------------------------------------------
-
-  async function fetchHomes() {
-    try {
-      const response = await api.get(
-        `${API_URL}/homes`
-      );
-
-      setHomes(response.data);
-
-      // Automatically select the newest home.
-      if (
-        response.data.length > 0 &&
-        !selectedHome
-      ) {
-        selectHome(response.data[0]);
-      }
-    } catch (error) {
-      console.error(
-        "Error fetching homes:",
-        error
-      );
-    }
-  }
-
-
-  // -----------------------------------------------------
-  // REFRESH THE COMPLETE DASHBOARD
-  // -----------------------------------------------------
-
-  async function refreshHomeDashboard(homeId) {
-    if (!homeId) {
-      return;
-    }
-
-    try {
-      setIsLoadingDashboard(true);
-      setDashboardError("");
-
-      // Promise.all runs all five requests at the same time.
-      //
-      // This is faster than:
-      //
-      // await issues
-      // await projects
-      // await assets
-      // await memories
-      // await documents
-      //
-      // because the browser does not wait for one request
-      // before starting the next.
-      const [
-        issuesResponse,
-        projectsResponse,
-        assetsResponse,
-        memoriesResponse,
-        documentsResponse,
-      ] = await Promise.all([
-        api.get(
-          `${API_URL}/homes/${homeId}/issues`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/projects`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/assets`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/memories`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/documents`
-        ),
-      ]);
-
-      setIssues(issuesResponse.data);
-      setProjects(projectsResponse.data);
-      setAssets(assetsResponse.data);
-      setMemories(memoriesResponse.data);
-      setDocuments(documentsResponse.data);
-    } catch (error) {
-      console.error(
-        "Error refreshing dashboard:",
-        error
-      );
-
-      setDashboardError(
-        error.response?.data?.details ||
-        error.response?.data?.error ||
-        "Could not load the home dashboard."
-      );
-    } finally {
-      setIsLoadingDashboard(false);
-    }
-  }
-
-  // -----------------------------------------------------
-  // FETCH STRUCTURED HOME PROFILE
-  // -----------------------------------------------------
-
-  async function fetchHomeProfile(
-    homeId
-  ) {
-    if (!homeId) {
-      return;
-    }
-
-    try {
-      setIsLoadingHomeProfile(true);
-      setHomeProfileError("");
-
-      const response =
-        await api.get(
-          `${API_URL}/homes/${homeId}/profile`
-        );
-
-      if (selectedHomeIdRef.current === homeId) {
-        setHomeProfile(
-          response.data
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Error fetching home profile:",
-        error
-      );
-
-      if (selectedHomeIdRef.current === homeId) {
-        setHomeProfile(null);
-
-        setHomeProfileError(
-          error.response?.data?.error ||
-          "Could not load the home profile."
-        );
-      }
-    } finally {
-      if (selectedHomeIdRef.current === homeId) {
-        setIsLoadingHomeProfile(false);
-      }
-    }
-  }
-
-
-  // -----------------------------------------------------
-  // SAVE STRUCTURED HOME PROFILE
-  // -----------------------------------------------------
-
-  async function saveHomeProfile(
-    profileUpdates
-  ) {
-    if (!selectedHome?.id) {
-      throw new Error(
-        "Select a home before updating its profile."
-      );
-    }
-
-    const response =
-      await api.patch(
-        `${API_URL}/homes/${selectedHome.id}/profile`,
-        profileUpdates
-      );
-
-    const updatedProfile =
-      response.data;
-
-    setHomeProfile(
-      updatedProfile
-    );
-
-    return updatedProfile;
-  }
-
-
-  // -----------------------------------------------------
-  // CREATE A HOME
-  // -----------------------------------------------------
-
-  async function createHome(event) {
-    event.preventDefault();
-
-    if (!homeForm.name.trim()) {
-      alert("Enter a name for the home.");
-      return;
-    }
-
-    try {
-      const response = await api.post(
-        `${API_URL}/homes`,
-        {
-          name: homeForm.name.trim(),
-
-          yearBuilt:
-            homeForm.yearBuilt
-              ? Number(
-                homeForm.yearBuilt
-              )
-              : null,
-
-          notes:
-            homeForm.notes.trim(),
-        }
-      );
-
-      const newHome = response.data;
-
-      setHomes((currentHomes) => [
-        newHome,
-        ...currentHomes,
-      ]);
-
-      selectHome(newHome);
-
-      setHomeForm({
-        name: "",
-        yearBuilt: "",
-        notes: "",
-      });
-    } catch (error) {
-      console.error(
-        "Error creating home:",
-        error
-      );
-
-      alert(
-        error.response?.data?.error ||
-        "Could not create the home."
-      );
-    }
-  }
-
-
-  // -----------------------------------------------------
-  // ASK HOUSEIQ
-  // -----------------------------------------------------
-
-  async function askHouseIQ(event) {
-    event.preventDefault();
-
-    if (!selectedHome) {
-      alert(
-        "Create or select a home first."
-      );
-      return;
-    }
-
-    if (!question.trim()) {
-      alert(
-        "Tell HouseIQ something or ask a question."
-      );
-      return;
-    }
-
-    try {
-      setIsAsking(true);
-      setAskError("");
-      setAgentResponse(null);
-
-      const response = await api.post(
-        `${API_URL}/homes/${selectedHome.id}/ask`,
-        {
-          question: question.trim(),
-        }
-      );
-
-      // Save the complete response instead of only the answer.
-      setAgentResponse(response.data);
-
-      // Clear the input after a successful request.
-      setQuestion("");
-
-      // The agent may have created issues, projects,
-      // assets, or memories.
-      //
-      // Refresh all dashboard data so those records appear.
-      await refreshHomeDashboard(
-        selectedHome.id
-      );
-    } catch (error) {
-      console.error(
-        "Error asking HouseIQ:",
-        error
-      );
-
-      setAskError(
-        error.response?.data?.details ||
-        error.response?.data?.error ||
-        "HouseIQ could not process that request."
-      );
-    } finally {
-      setIsAsking(false);
-    }
-  }
-
-  // -----------------------------------------------------
-  // UPLOAD AND ANALYZE A DOCUMENT
-  // -----------------------------------------------------
-
-  async function uploadDocument(event) {
-    event.preventDefault();
-
-    // A document must belong to a home.
-    if (!selectedHome) {
-      alert(
-        "Create or select a home before uploading a document."
-      );
-
-      return;
-    }
-
-    // The user must choose a file first.
-    if (!selectedDocumentFile) {
-      setDocumentUploadError(
-        "Choose a PDF or text file before uploading."
-      );
-
-      return;
-    }
-
-    // The backend currently accepts only PDF and plain text.
-    const allowedMimeTypes = [
-      "application/pdf",
-      "text/plain",
-    ];
-
-    if (
-      !allowedMimeTypes.includes(
-        selectedDocumentFile.type
-      )
-    ) {
-      setDocumentUploadError(
-        "HouseIQ currently supports only PDF and plain-text files."
-      );
-
-      return;
-    }
-
-    // Match the backend's 10 MB limit.
-    const maximumFileSize =
-      10 * 1024 * 1024;
-
-    if (
-      selectedDocumentFile.size >
-      maximumFileSize
-    ) {
-      setDocumentUploadError(
-        "The selected file is larger than 10 MB."
-      );
-
-      return;
-    }
-
-    try {
-      setIsUploadingDocument(true);
-      setDocumentUploadError("");
-      setDocumentUploadResult(null);
-
-      // FormData is required for file uploads.
-      //
-      // Normal JSON cannot directly contain a browser File object.
-      const formData = new FormData();
-
-      // This field name must exactly match:
-      //
-      // upload.single("document")
-      //
-      // in backend/server.js.
-      formData.append(
-        "document",
-        selectedDocumentFile
-      );
-
-      // This becomes req.body.documentType on the backend.
-      formData.append(
-        "documentType",
-        selectedDocumentType
-      );
-
-      const response = await api.post(
-        `${API_URL}/homes/${selectedHome.id}/documents/upload`,
-        formData
-      );
-
-      // Save the full backend response so the UI can display
-      // the summary, metadata, and actions taken.
-      setDocumentUploadResult(
-        response.data
-      );
-
-      // Clear the selected file after success.
-      setSelectedDocumentFile(null);
-
-      // Reset the physical file input.
-      //
-      // React state clearing does not always clear the visible
-      // filename inside an <input type="file">.
-      const fileInput =
-        document.getElementById(
-          "houseiq-document-input"
-        );
-
-      if (fileInput) {
-        fileInput.value = "";
-      }
-
-      // The document analysis may have created records in
-      // multiple dashboard categories.
-      await refreshHomeDashboard(
-        selectedHome.id
-      );
-
-      // Show the user the new document immediately.
-      setActiveTab("documents");
-    } catch (error) {
-      console.error(
-        "Document upload failed:",
-        error
-      );
-
-      setDocumentUploadError(
-        error.response?.data?.details ||
-        error.response?.data?.error ||
-        "HouseIQ could not process the document."
-      );
-    } finally {
-      setIsUploadingDocument(false);
-    }
-  }
-
-  // -----------------------------------------------------
-  // OPEN THE ORIGINAL PRIVATE DOCUMENT
-  // -----------------------------------------------------
-
-  async function openOriginalDocument(
-    documentRecord
-  ) {
-    if (!documentRecord?.id) {
-      return;
-    }
-
-    try {
-      const response = await api.get(
-        `${API_URL}/documents/${documentRecord.id}/download-url`
-      );
-
-      const signedUrl =
-        response.data.url;
-
-      if (!signedUrl) {
-        throw new Error(
-          "The server did not return a document URL."
-        );
-      }
-
-      // Open the temporary S3 URL in a new browser tab.
-      //
-      // "noopener,noreferrer" prevents the opened page from
-      // receiving access to the original browser window.
-      window.open(
-        signedUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
-    } catch (error) {
-      console.error(
-        "Could not open original document:",
-        error
-      );
-
-      alert(
-        error.response?.data?.details ||
-        error.response?.data?.error ||
-        error.message ||
-        "The original document could not be opened."
-      );
-    }
-  }
-
-
-  // -----------------------------------------------------
-  // CREATE A MANUAL MEMORY
-  // -----------------------------------------------------
-
-  async function createMemory(event) {
-    event.preventDefault();
-
-    if (!selectedHome) {
-      alert(
-        "Create or select a home first."
-      );
-      return;
-    }
-
-    if (!memoryForm.content.trim()) {
-      alert(
-        "Memory content is required."
-      );
-      return;
-    }
-
-    try {
-      await api.post(
-        `${API_URL}/homes/${selectedHome.id}/memories`,
-        {
-          title:
-            memoryForm.title.trim(),
-
-          category:
-            memoryForm.category,
-
-          content:
-            memoryForm.content.trim(),
-        }
-      );
-
-      setMemoryForm({
-        title: "",
-        category: "general",
-        content: "",
-      });
-
-      // Refresh so the new memory appears in the tab.
-      await refreshHomeDashboard(
-        selectedHome.id
-      );
-
-      setActiveTab("memories");
-    } catch (error) {
-      console.error(
-        "Error creating memory:",
-        error
-      );
-
-      alert(
-        error.response?.data?.error ||
-        "Could not save the memory."
-      );
-    }
-  }
 
   // -----------------------------------------------------
   // RENDER STRUCTURED HOME PROFILE
@@ -1015,117 +230,22 @@ function App() {
     }
   }
 
-  // -----------------------------------------------------
-  // AUTHENTICATION LOADING SCREEN
-  // -----------------------------------------------------
-
-  if (isAuthLoading) {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <p className="eyebrow">
-            HouseIQ
-          </p>
-
-          <h1>
-            Checking your session
-          </h1>
-
-          <p>
-            HouseIQ is confirming whether
-            you are signed in.
-          </p>
-        </section>
-      </main>
-    );
-  }
-
 
   // -----------------------------------------------------
-  // AUTHENTICATION ERROR SCREEN
+  // AUTHENTICATION SCREENS
   // -----------------------------------------------------
+  //
+  // Returns null once the user is signed in.
+  //
+  const authScreen = getAuthScreen({
+    isAuthLoading,
+    authError,
+    isAuthenticated,
+    loginWithRedirect,
+  });
 
-  if (authError) {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <p className="eyebrow">
-            Authentication error
-          </p>
-
-          <h1>
-            HouseIQ could not sign you in
-          </h1>
-
-          <p className="error-message">
-            {authError.message}
-          </p>
-
-          <button
-            type="button"
-            onClick={() =>
-              loginWithRedirect()
-            }
-          >
-            Try again
-          </button>
-        </section>
-      </main>
-    );
-  }
-
-
-  // -----------------------------------------------------
-  // LOGGED-OUT SCREEN
-  // -----------------------------------------------------
-
-  if (!isAuthenticated) {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <p className="eyebrow">
-            Agentic home memory
-          </p>
-
-          <h1>
-            HouseIQ
-          </h1>
-
-          <p className="auth-introduction">
-            Your private home record,
-            repair history, documents,
-            equipment, and maintenance
-            intelligence in one place.
-          </p>
-
-          <div className="auth-actions">
-            <button
-              type="button"
-              onClick={() =>
-                loginWithRedirect()
-              }
-            >
-              Log in
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() =>
-                loginWithRedirect({
-                  authorizationParams: {
-                    screen_hint:
-                      "signup",
-                  },
-                })
-              }
-            >
-              Create account
-            </button>
-          </div>
-        </section>
-      </main>
-    );
+  if (authScreen) {
+    return authScreen;
   }
 
 
@@ -1337,505 +457,56 @@ function App() {
               {/* HOUSEIQ CONVERSATION             */}
               {/* -------------------------------- */}
 
-              <section className="agent-section">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">
-                      Talk naturally
-                    </p>
+              <AgentPanel
+                key={
+                  selectedHome?.id ||
+                  "no-home"
+                }
+                selectedHome={selectedHome}
+                onRecordsChanged={() =>
+                  refreshHomeDashboard(
+                    selectedHome.id
+                  )
+                }
+              />
 
-                    <h3>
-                      Tell HouseIQ
-                      what is happening
-                    </h3>
-                  </div>
-
-                  <span className="agent-status">
-                    Memory agent
-                    active
-                  </span>
-                </div>
-
-                <form
-                  onSubmit={
-                    askHouseIQ
-                  }
-                  className="agent-form"
-                >
-                  <textarea
-                    value={question}
-                    onChange={(
-                      event
-                    ) =>
-                      setQuestion(
-                        event
-                          .target
-                          .value
-                      )
-                    }
-                    placeholder="Example: The west bedroom window leaked again during last night's storm. I already sealed the outside trim with silicone. What should I do next?"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={
-                      isAsking
-                    }
-                  >
-                    {isAsking
-                      ? "HouseIQ is thinking..."
-                      : "Send to HouseIQ"}
-                  </button>
-                </form>
-
-                {askError && (
-                  <div className="error-message">
-                    <strong>
-                      HouseIQ
-                      encountered a
-                      problem
-                    </strong>
-
-                    <p>
-                      {askError}
-                    </p>
-                  </div>
-                )}
-
-
-                {/* ---------------------------- */}
-                {/* STRUCTURED AGENT RESPONSE    */}
-                {/* ---------------------------- */}
-
-                {agentResponse && (
-                  <div className="agent-response">
-                    <div className="agent-response-header">
-                      <div>
-                        <p className="eyebrow">
-                          HouseIQ
-                          response
-                        </p>
-
-                        <h3>
-                          Recommended
-                          next step
-                        </h3>
-                      </div>
-
-                      <span
-                        className={`confidence-badge confidence-${agentResponse.confidence}`}
-                      >
-                        {formatLabel(
-                          agentResponse.confidence
-                        )}{" "}
-                        confidence
-                      </span>
-                    </div>
-
-                    <div className="answer-box">
-                      {
-                        agentResponse.answer
-                      }
-                    </div>
-
-                    {agentResponse
-                      .needsMoreInfo &&
-                      agentResponse
-                        .clarifyingQuestions
-                        ?.length >
-                      0 && (
-                        <section className="clarifying-section">
-                          <h4>
-                            Questions
-                            HouseIQ
-                            needs
-                            answered
-                          </h4>
-
-                          <ol>
-                            {agentResponse.clarifyingQuestions.map(
-                              (
-                                item,
-                                index
-                              ) => (
-                                <li
-                                  key={`${item}-${index}`}
-                                >
-                                  {
-                                    item
-                                  }
-                                </li>
-                              )
-                            )}
-                          </ol>
-                        </section>
-                      )}
-
-                    <section className="actions-section">
-                      <h4>
-                        What
-                        HouseIQ
-                        updated
-                      </h4>
-
-                      {agentResponse
-                        .actionsTaken
-                        ?.length >
-                        0 ? (
-                        <div className="action-list">
-                          {agentResponse.actionsTaken.map(
-                            (
-                              action,
-                              index
-                            ) => (
-                              <div
-                                key={`${action.recordId}-${index}`}
-                                className="action-item"
-                              >
-                                <span className="action-icon">
-                                  âœ“
-                                </span>
-
-                                <div>
-                                  <strong>
-                                    {formatLabel(
-                                      action.type
-                                    )}
-                                  </strong>
-
-                                  <p>
-                                    {
-                                      action.title
-                                    }
-                                  </p>
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        <p className="empty-state">
-                          HouseIQ
-                          answered
-                          without
-                          creating
-                          any new
-                          records.
-                        </p>
-                      )}
-                    </section>
-                  </div>
-                )}
-              </section>
 
               {/* -------------------------------- */}
               {/* DOCUMENT UPLOAD                   */}
               {/* -------------------------------- */}
 
-              <section className="document-upload-section">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">
-                      Build home memory automatically
-                    </p>
-
-                    <h3>
-                      Upload a home document
-                    </h3>
-
-                    <p className="section-description">
-                      Upload an inspection report,
-                      invoice, receipt, warranty, or
-                      manual. HouseIQ will extract the
-                      useful facts and update the home
-                      record.
-                    </p>
-                  </div>
-
-                  <span className="document-support-badge">
-                    PDF or TXT
-                  </span>
-                </div>
-
-                <form
-                  onSubmit={uploadDocument}
-                  className="document-upload-form"
-                >
-                  <div className="document-form-fields">
-                    <label className="form-field">
-                      <span>Document type</span>
-
-                      <select
-                        value={selectedDocumentType}
-                        onChange={(event) =>
-                          setSelectedDocumentType(
-                            event.target.value
-                          )
-                        }
-                        disabled={isUploadingDocument}
-                      >
-                        <option value="inspection">
-                          Inspection report
-                        </option>
-
-                        <option value="invoice">
-                          Repair invoice
-                        </option>
-
-                        <option value="receipt">
-                          Receipt
-                        </option>
-
-                        <option value="warranty">
-                          Warranty
-                        </option>
-
-                        <option value="manual">
-                          Appliance or equipment manual
-                        </option>
-
-                        <option value="estimate">
-                          Contractor estimate
-                        </option>
-
-                        <option value="insurance">
-                          Insurance document
-                        </option>
-
-                        <option value="general">
-                          Other document
-                        </option>
-                      </select>
-                    </label>
-
-                    <label className="form-field file-field">
-                      <span>Select file</span>
-
-                      <input
-                        id="houseiq-document-input"
-                        type="file"
-                        accept=".pdf,.txt,application/pdf,text/plain"
-                        onChange={(event) => {
-                          const file =
-                            event.target.files?.[0] ||
-                            null;
-
-                          setSelectedDocumentFile(file);
-                          setDocumentUploadError("");
-                          setDocumentUploadResult(null);
-                        }}
-                        disabled={isUploadingDocument}
-                      />
-                    </label>
-                  </div>
-
-                  {selectedDocumentFile && (
-                    <div className="selected-file-preview">
-                      <div>
-                        <strong>
-                          {selectedDocumentFile.name}
-                        </strong>
-
-                        <span>
-                          {formatFileSize(
-                            selectedDocumentFile.size
-                          )}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="text-button"
-                        disabled={isUploadingDocument}
-                        onClick={() => {
-                          setSelectedDocumentFile(null);
-
-                          const fileInput =
-                            document.getElementById(
-                              "houseiq-document-input"
-                            );
-
-                          if (fileInput) {
-                            fileInput.value = "";
-                          }
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={
-                      isUploadingDocument ||
-                      !selectedDocumentFile
-                    }
-                  >
-                    {isUploadingDocument
-                      ? "Uploading and analyzing..."
-                      : "Upload to HouseIQ"}
-                  </button>
-                </form>
-
-                {isUploadingDocument && (
-                  <div className="document-processing-state">
-                    <strong>
-                      HouseIQ is reading the document
-                    </strong>
-
-                    <p>
-                      Extracting text, creating a
-                      summary, and checking for home
-                      memories, issues, projects, and
-                      assets.
-                    </p>
-                  </div>
-                )}
-
-                {documentUploadError && (
-                  <div className="error-message">
-                    <strong>
-                      Document upload failed
-                    </strong>
-
-                    <p>{documentUploadError}</p>
-                  </div>
-                )}
-
-                {documentUploadResult && (
-                  <div className="document-upload-result">
-                    <div className="document-result-header">
-                      <div>
-                        <p className="eyebrow">
-                          Analysis complete
-                        </p>
-
-                        <h4>
-                          {
-                            documentUploadResult
-                              .document?.fileName
-                          }
-                        </h4>
-                      </div>
-
-                      <span className="success-badge">
-                        Saved
-                      </span>
-                    </div>
-
-                    <div className="document-summary-box">
-                      <strong>
-                        HouseIQ summary
-                      </strong>
-
-                      <p>
-                        {
-                          documentUploadResult
-                            .document?.summary
-                        }
-                      </p>
-                    </div>
-
-                    {documentUploadResult
-                      .document?.metadata && (
-                        <div className="document-metadata-grid">
-                          {documentUploadResult.document
-                            .metadata.documentDate && (
-                              <div>
-                                <span>
-                                  Document date
-                                </span>
-
-                                <strong>
-                                  {
-                                    documentUploadResult
-                                      .document.metadata
-                                      .documentDate
-                                  }
-                                </strong>
-                              </div>
-                            )}
-
-                          {documentUploadResult.document
-                            .metadata
-                            .contractorOrCompany && (
-                              <div>
-                                <span>
-                                  Company
-                                </span>
-
-                                <strong>
-                                  {
-                                    documentUploadResult
-                                      .document.metadata
-                                      .contractorOrCompany
-                                  }
-                                </strong>
-                              </div>
-                            )}
-
-                          {Number(
-                            documentUploadResult.document
-                              .metadata.totalAmount
-                          ) > 0 && (
-                              <div>
-                                <span>Total amount</span>
-
-                                <strong>
-                                  {formatCurrency(
-                                    documentUploadResult
-                                      .document.metadata
-                                      .totalAmount
-                                  )}
-                                </strong>
-                              </div>
-                            )}
-                        </div>
-                      )}
-
-                    <div className="actions-section">
-                      <h4>
-                        What HouseIQ updated
-                      </h4>
-
-                      {documentUploadResult
-                        .actionsTaken?.length > 0 ? (
-                        <div className="action-list">
-                          {documentUploadResult.actionsTaken.map(
-                            (action, index) => (
-                              <div
-                                key={`${action.recordId}-${index}`}
-                                className="action-item"
-                              >
-                                <span className="action-icon">
-                                  âœ“
-                                </span>
-
-                                <div>
-                                  <strong>
-                                    {formatLabel(
-                                      action.type
-                                    )}
-                                  </strong>
-
-                                  <p>{action.title}</p>
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        <p className="empty-state">
-                          The document was saved, but
-                          HouseIQ did not create any
-                          additional records.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </section>
+              <DocumentUploadPanel
+                selectedDocumentType={
+                  selectedDocumentType
+                }
+                setSelectedDocumentType={
+                  setSelectedDocumentType
+                }
+                selectedDocumentFile={
+                  selectedDocumentFile
+                }
+                setSelectedDocumentFile={
+                  setSelectedDocumentFile
+                }
+                isUploadingDocument={
+                  isUploadingDocument
+                }
+                documentUploadError={
+                  documentUploadError
+                }
+                setDocumentUploadError={
+                  setDocumentUploadError
+                }
+                documentUploadResult={
+                  documentUploadResult
+                }
+                setDocumentUploadResult={
+                  setDocumentUploadResult
+                }
+                uploadDocument={
+                  uploadDocument
+                }
+              />
 
 
               {/* -------------------------------- */}
@@ -2059,119 +730,15 @@ function App() {
               {/* MANUAL TESTING PANEL             */}
               {/* -------------------------------- */}
 
-              <details className="manual-panel">
-                <summary>
-                  Manual memory entry
-                  for testing
-                </summary>
-
-                <form
-                  onSubmit={
-                    createMemory
-                  }
-                  className="stack manual-memory-form"
-                >
-                  <p>
-                    This form is
-                    useful while
-                    developing, but
-                    normal users
-                    should primarily
-                    talk to HouseIQ.
-                  </p>
-
-                  <input
-                    value={
-                      memoryForm.title
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setMemoryForm(
-                        {
-                          ...memoryForm,
-                          title: event
-                            .target
-                            .value,
-                        }
-                      )
-                    }
-                    placeholder="Memory title"
-                  />
-
-                  <select
-                    value={
-                      memoryForm.category
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setMemoryForm(
-                        {
-                          ...memoryForm,
-                          category:
-                            event
-                              .target
-                              .value,
-                        }
-                      )
-                    }
-                  >
-                    <option value="general">
-                      General
-                    </option>
-
-                    <option value="repair">
-                      Repair
-                    </option>
-
-                    <option value="maintenance">
-                      Maintenance
-                    </option>
-
-                    <option value="appliance">
-                      Appliance
-                    </option>
-
-                    <option value="exterior">
-                      Exterior
-                    </option>
-
-                    <option value="landscaping">
-                      Landscaping
-                    </option>
-
-                    <option value="inspection">
-                      Inspection
-                    </option>
-                  </select>
-
-                  <textarea
-                    value={
-                      memoryForm.content
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setMemoryForm(
-                        {
-                          ...memoryForm,
-                          content:
-                            event
-                              .target
-                              .value,
-                        }
-                      )
-                    }
-                    placeholder="What should HouseIQ remember?"
-                  />
-
-                  <button type="submit">
-                    Save Test
-                    Memory
-                  </button>
-                </form>
-              </details>
+              <ManualMemoryPanel
+                memoryForm={memoryForm}
+                setMemoryForm={
+                  setMemoryForm
+                }
+                createMemory={
+                  createMemory
+                }
+              />
             </>
           ) : (
             <div className="empty-state large">
