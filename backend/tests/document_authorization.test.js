@@ -132,7 +132,7 @@ let testDatabase;
 //
 // That is the same location used by production code.
 //
-vi.mock("../auth.js", () => {
+vi.mock("../middleware/auth.js", () => {
     return {
         requireAuth: (
             req,
@@ -187,12 +187,12 @@ vi.mock("../auth.js", () => {
 //
 // server.js imports:
 //
-// import { pool } from "./db.js";
+// import { pool } from "../db/pool.js";
 //
 // This replacement prevents the test from connecting to the
 // real CockroachDB cluster.
 //
-vi.mock("../db.js", () => {
+vi.mock("../db/pool.js", () => {
     return {
         pool: {
             query:
@@ -218,7 +218,7 @@ vi.mock("../db.js", () => {
 // More importantly, the mocks let us prove that forbidden
 // users never reach an S3 operation.
 //
-vi.mock("../s3.js", () => {
+vi.mock("../services/s3.js", () => {
     return {
         createDocumentDownloadUrl:
             mockCreateDocumentDownloadUrl,
@@ -241,7 +241,7 @@ vi.mock("../s3.js", () => {
 // The download and deletion tests do not use AI, but mocking
 // the module keeps this test completely isolated from OpenAI.
 //
-vi.mock("../ai.js", () => {
+vi.mock("../services/ai/index.js", () => {
     return {
         createEmbedding:
             vi.fn(async () =>

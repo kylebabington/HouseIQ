@@ -5,9 +5,9 @@ import pdf from "pdf-parse/lib/pdf-parse.js";
 import {
     createEmbedding,
     vectorToSql,
-} from "./ai.js";
+} from "./ai/index.js";
 
-import { pool } from "./db.js";
+import { pool } from "../db/pool.js";
 
 // ---------------------------------------------------------
 // DATABASE RECORD HELPERS

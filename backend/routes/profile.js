@@ -6,19 +6,19 @@ import {
 
 import {
     requireAuth,
-} from "../auth.js";
+} from "../middleware/auth.js";
 
-import { pool } from "../db.js";
+import { pool } from "../db/pool.js";
 
 import {
     formatHomeProfile,
     HOME_PROFILE_FIELDS,
     validateHomeProfileValue,
-} from "../homeProfile.js";
+} from "../lib/homeProfile.js";
 
 import {
     requireHomeOwnership,
-} from "../ownership.js";
+} from "../middleware/ownership.js";
 
 export function createProfileRouter() {
     const router = Router();

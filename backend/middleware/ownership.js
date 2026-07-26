@@ -4,11 +4,11 @@ import {
     getAuthenticatedUserId,
 } from "./auth.js";
 
-import { pool } from "./db.js";
+import { pool } from "../db/pool.js";
 
 import {
     isValidUuid,
-} from "./validation.js";
+} from "../lib/validation.js";
 
 // ---------------------------------------------------------
 // HOME OWNERSHIP AUTHORIZATION

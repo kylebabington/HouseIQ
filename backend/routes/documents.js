@@ -6,18 +6,18 @@ import {
 
 import {
     analyzeHomeDocument,
-} from "../ai.js";
+} from "../services/ai/index.js";
 
 import {
     requireAuth,
-} from "../auth.js";
+} from "../middleware/auth.js";
 
-import { pool } from "../db.js";
+import { pool } from "../db/pool.js";
 
 import {
     requireDocumentOwnership,
     requireHomeOwnership,
-} from "../ownership.js";
+} from "../middleware/ownership.js";
 
 import {
     createAssetRecord,
@@ -25,13 +25,13 @@ import {
     createMemoryRecord,
     createProjectRecord,
     extractTextFromUploadedFile,
-} from "../recordHelpers.js";
+} from "../services/recordHelpers.js";
 
 import {
     createDocumentDownloadUrl,
     deleteDocumentFromS3,
     uploadDocumentToS3,
-} from "../s3.js";
+} from "../services/s3.js";
 
 export function createDocumentsRouter(upload) {
     const router = Router();

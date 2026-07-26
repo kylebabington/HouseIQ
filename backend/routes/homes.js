@@ -7,9 +7,9 @@ import {
 import {
     getAuthenticatedUserId,
     requireAuth,
-} from "../auth.js";
+} from "../middleware/auth.js";
 
-import { pool } from "../db.js";
+import { pool } from "../db/pool.js";
 
 export function createHomesRouter() {
     const router = Router();
