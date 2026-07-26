@@ -439,6 +439,11 @@ NOT NULL DEFAULT '[]'::JSONB;
 ALTER TABLE home_profiles
 ADD COLUMN IF NOT EXISTS lot_size_acres DECIMAL;
 
+UPDATE home_profiles
+SET lot_size_acres = lot_size_sq_ft / 43560.0
+WHERE lot_size_sq_ft IS NOT NULL
+  AND lot_size_acres IS NULL;
+
 ALTER TABLE home_profiles
 DROP COLUMN IF EXISTS lot_size_sq_ft;
 

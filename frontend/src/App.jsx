@@ -609,23 +609,29 @@ function App() {
           `${API_URL}/homes/${homeId}/profile`
         );
 
-      setHomeProfile(
-        response.data
-      );
+      if (selectedHome?.id === homeId) {
+        setHomeProfile(
+          response.data
+        );
+      }
     } catch (error) {
       console.error(
         "Error fetching home profile:",
         error
       );
 
-      setHomeProfile(null);
+      if (selectedHome?.id === homeId) {
+        setHomeProfile(null);
 
-      setHomeProfileError(
-        error.response?.data?.error ||
-        "Could not load the home profile."
-      );
+        setHomeProfileError(
+          error.response?.data?.error ||
+          "Could not load the home profile."
+        );
+      }
     } finally {
-      setIsLoadingHomeProfile(false);
+      if (selectedHome?.id === homeId) {
+        setIsLoadingHomeProfile(false);
+      }
     }
   }
 
