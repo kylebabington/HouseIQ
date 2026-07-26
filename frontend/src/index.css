@@ -1010,6 +1010,119 @@ button:disabled {
 
 
 /* --------------------------------------------------------- */
+/* RECORD ACT LOOP (INLINE EDITING)                          */
+/* --------------------------------------------------------- */
+/*
+  Shared by IssuesPanel, ProjectsPanel, AssetsPanel, and
+  MemoriesPanel for status selects, edit forms, and inline
+  errors created by the human governance ("ACT loop") flow.
+*/
+
+.status-select-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-select-field>span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-select {
+  padding: 0.4rem 0.7rem;
+
+  border:
+    1px solid var(--border);
+  border-radius: 999px;
+
+  background: var(--cream);
+  color: var(--ink);
+
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+
+  margin-top: 0.85rem;
+}
+
+.small-button {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.record-edit-form {
+  display: grid;
+  gap: 0.6rem;
+
+  margin-top: 0.85rem;
+}
+
+.record-edit-form label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.record-edit-form label>span {
+  color: #4c6051;
+
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.record-edit-form input,
+.record-edit-form textarea {
+  padding: 0.6rem 0.75rem;
+}
+
+.record-edit-form textarea {
+  min-height: 80px;
+}
+
+.record-inline-error {
+  margin-top: 0.65rem;
+  padding: 0.6rem 0.75rem;
+
+  background: #fff0ed;
+
+  border:
+    1px solid rgba(168, 62, 48, 0.22);
+  border-radius: 12px;
+
+  color: #762e25;
+  font-size: 0.8rem;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+
+  list-style: none;
+}
+
+.task-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  cursor: pointer;
+}
+
+.task-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+
+/* --------------------------------------------------------- */
 /* MANUAL MEMORY PANEL                                       */
 /* --------------------------------------------------------- */
 

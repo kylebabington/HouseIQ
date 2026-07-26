@@ -157,6 +157,25 @@ function App() {
 
 
   // -----------------------------------------------------
+  // REFRESH RECORDS AFTER AN EDIT OR DELETE
+  // -----------------------------------------------------
+  //
+  // Issues, projects, tasks, assets, and memories panels
+  // call this after a PATCH or DELETE succeeds so the
+  // dashboard reflects the human's correction immediately.
+  //
+  async function refreshDashboardForSelectedHome() {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    await refreshHomeDashboard(
+      selectedHome.id
+    );
+  }
+
+
+  // -----------------------------------------------------
   // RENDER STRUCTURED HOME PROFILE
   // -----------------------------------------------------
 
@@ -195,6 +214,10 @@ function App() {
         return (
           <ProjectsPanel
             projects={projects}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
 
@@ -202,6 +225,10 @@ function App() {
         return (
           <AssetsPanel
             assets={assets}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
 
@@ -209,6 +236,10 @@ function App() {
         return (
           <MemoriesPanel
             memories={memories}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
 
@@ -225,6 +256,10 @@ function App() {
         return (
           <IssuesPanel
             issues={issues}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
     }
