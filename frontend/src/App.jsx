@@ -176,6 +176,33 @@ function App() {
 
 
   // -----------------------------------------------------
+  // SCROLL TO (AND OPTIONALLY FOCUS) A DEMO SECTION
+  // -----------------------------------------------------
+  //
+  // Used by the compact demo CTA row so a new user can jump
+  // straight to "upload a document" or "ask HouseIQ" without
+  // hunting for those sections on a long page.
+  //
+  function scrollToSection(elementId, { focus } = {}) {
+    const element =
+      document.getElementById(elementId);
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    if (focus) {
+      element.focus({ preventScroll: true });
+    }
+  }
+
+
+  // -----------------------------------------------------
   // RENDER STRUCTURED HOME PROFILE
   // -----------------------------------------------------
 
@@ -492,6 +519,46 @@ function App() {
               {/* HOUSEIQ CONVERSATION             */}
               {/* -------------------------------- */}
 
+              {/* Always shown once a home is selected — the
+                  quickest path to the two actions HouseIQ's demo
+                  hinges on: uploading a document and asking a
+                  question. */}
+              <section className="demo-cta-row">
+                <p className="demo-cta-copy">
+                  Upload an inspection report,
+                  then ask what to do before
+                  winter — HouseIQ will use your
+                  profile and documents.
+                </p>
+
+                <div className="demo-cta-buttons">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      scrollToSection(
+                        "houseiq-document-upload-section"
+                      )
+                    }
+                  >
+                    Upload a document
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      scrollToSection(
+                        "houseiq-agent-textarea",
+                        { focus: true }
+                      )
+                    }
+                  >
+                    Ask HouseIQ
+                  </button>
+                </div>
+              </section>
+
               <AgentPanel
                 key={
                   selectedHome?.id ||
@@ -503,6 +570,7 @@ function App() {
                     selectedHome.id
                   )
                 }
+                onNavigateTab={setActiveTab}
               />
 
 
@@ -765,15 +833,17 @@ function App() {
               {/* MANUAL TESTING PANEL             */}
               {/* -------------------------------- */}
 
-              <ManualMemoryPanel
-                memoryForm={memoryForm}
-                setMemoryForm={
-                  setMemoryForm
-                }
-                createMemory={
-                  createMemory
-                }
-              />
+              {import.meta.env.DEV && (
+                <ManualMemoryPanel
+                  memoryForm={memoryForm}
+                  setMemoryForm={
+                    setMemoryForm
+                  }
+                  createMemory={
+                    createMemory
+                  }
+                />
+              )}
             </>
           ) : (
             <div className="empty-state large">

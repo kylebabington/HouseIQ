@@ -44,6 +44,41 @@ const MAX_ASSETS_PER_RUN = 2;
 const NON_FACT_PROFILE_FIELD_PATTERN =
     /^(homeId|metadata|onboarding|profileCreatedAt|profileUpdatedAt)/i;
 
+// The frontend may send a handful of recent turns so HouseIQ has
+// light conversational context. This caps how many are trusted
+// regardless of what the client sends.
+const MAX_CONVERSATION_HISTORY_ITEMS = 3;
+
+/**
+ * Validates and normalizes the optional conversationHistory body
+ * field into a small array of { role, content } strings.
+ *
+ * Anything malformed is dropped rather than rejected outright —
+ * conversation history is a nice-to-have, not a correctness
+ * requirement for the agent to function.
+ */
+function sanitizeConversationHistory(rawHistory) {
+    if (!Array.isArray(rawHistory)) {
+        return [];
+    }
+
+    return rawHistory
+        .filter(
+            (item) =>
+                item &&
+                typeof item === "object" &&
+                (item.role === "user" ||
+                    item.role === "assistant") &&
+                typeof item.content === "string" &&
+                item.content.trim().length > 0
+        )
+        .slice(0, MAX_CONVERSATION_HISTORY_ITEMS * 2)
+        .map((item) => ({
+            role: item.role,
+            content: item.content.trim().slice(0, 400),
+        }));
+}
+
 export function createAgentRouter() {
     const router = Router();
 
@@ -57,7 +92,12 @@ export function createAgentRouter() {
         requireHomeOwnership,
         async (req, res) => {
             const homeId = req.authorizedHomeId;
-            const { question } = req.body;
+            const { question, conversationHistory } = req.body;
+
+            const sanitizedConversationHistory =
+                sanitizeConversationHistory(
+                    conversationHistory
+                );
 
             // Validate before doing any expensive AI work.
             if (
@@ -235,6 +275,8 @@ export function createAgentRouter() {
                             issues,
                             projects,
                             assets,
+                            conversationHistory:
+                                sanitizedConversationHistory,
                         }
                     );
 

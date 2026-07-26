@@ -176,6 +176,31 @@ ${project.description}
 }
 
 /**
+ * Turns a short list of { role, content } conversation turns into
+ * a readable "recent conversation" section. Callers are expected
+ * to have already validated and truncated each entry.
+ */
+function formatConversationHistoryContext(conversationHistory) {
+    if (
+        !conversationHistory ||
+        conversationHistory.length === 0
+    ) {
+        return "This is the start of the conversation.";
+    }
+
+    return conversationHistory
+        .map((turn) => {
+            const speaker =
+                turn.role === "assistant"
+                    ? "HouseIQ"
+                    : "Homeowner";
+
+            return `${speaker}: ${turn.content}`;
+        })
+        .join("\n");
+}
+
+/**
  * Turns home_assets rows into readable context blocks.
  */
 function formatAssetContext(assets) {
@@ -263,6 +288,7 @@ export async function generateHouseAgentResponse(
         issues = [],
         projects = [],
         assets = [],
+        conversationHistory = [],
     } = context || {};
 
     if (typeof question !== "string" || !question.trim()) {
@@ -275,6 +301,8 @@ export async function generateHouseAgentResponse(
     const issueContext = formatIssueContext(issues);
     const projectContext = formatProjectContext(projects);
     const assetContext = formatAssetContext(assets);
+    const conversationHistoryContext =
+        formatConversationHistoryContext(conversationHistory);
 
     const completion = await openai.chat.completions.create({
         model: CHAT_MODEL,
@@ -702,6 +730,11 @@ ${projectContext}
 KNOWN ASSETS
 
 ${assetContext}
+
+
+RECENT CONVERSATION (most recent last)
+
+${conversationHistoryContext}
 
 
 CURRENT HOMEOWNER MESSAGE

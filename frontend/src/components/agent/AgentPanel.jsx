@@ -19,6 +19,95 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   "http://localhost:5000/api";
 
+// How many prior turns are sent back to the backend as light
+// conversational context. Keeps the request small and cheap.
+const CONVERSATION_HISTORY_TURN_LIMIT = 3;
+
+// Each history entry is truncated to this many characters so a
+// long answer or question cannot balloon the request body.
+const CONVERSATION_HISTORY_CHAR_LIMIT = 400;
+
+
+// ---------------------------------------------------------
+// MAP AN AGENT ACTION TO A DASHBOARD TAB
+// ---------------------------------------------------------
+//
+// actionsTaken entries look like { type, recordId, title }.
+// This tells the parent which dashboard tab to reveal when the
+// homeowner clicks that action's chip.
+//
+function mapActionTypeToTab(actionType) {
+  if (!actionType) {
+    return null;
+  }
+
+  if (actionType === "memory_created") {
+    return "memories";
+  }
+
+  if (actionType === "issue_created") {
+    return "issues";
+  }
+
+  if (actionType === "project_created") {
+    return "projects";
+  }
+
+  if (actionType === "asset_created") {
+    return "assets";
+  }
+
+  if (actionType.startsWith("document_")) {
+    return "documents";
+  }
+
+  return null;
+}
+
+
+/**
+ * Trims a string down to a safe length for conversational
+ * context sent back to the backend.
+ */
+function truncateForHistory(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  if (value.length <= CONVERSATION_HISTORY_CHAR_LIMIT) {
+    return value;
+  }
+
+  return `${value.slice(0, CONVERSATION_HISTORY_CHAR_LIMIT)}...`;
+}
+
+
+/**
+ * Turns the last few turns into a short { role, content } list
+ * the backend can lightly fold into the agent prompt.
+ */
+function buildConversationHistory(turns) {
+  const recentTurns = turns.slice(
+    -CONVERSATION_HISTORY_TURN_LIMIT
+  );
+
+  const history = [];
+
+  for (const turn of recentTurns) {
+    history.push({
+      role: "user",
+      content: truncateForHistory(turn.question),
+    });
+
+    history.push({
+      role: "assistant",
+      content: truncateForHistory(turn.answer),
+    });
+  }
+
+  return history;
+}
+
 
 // ---------------------------------------------------------
 // HOUSEIQ CONVERSATION PANEL
@@ -34,6 +123,7 @@ const API_URL =
 function AgentPanel({
   selectedHome,
   onRecordsChanged,
+  onNavigateTab,
 }) {
   // -----------------------------------------------------
   // HOUSEIQ AGENT STATE
@@ -42,16 +132,10 @@ function AgentPanel({
   // The natural-language message entered by the user.
   const [question, setQuestion] = useState("");
 
-  // The complete structured response from /ask.
-  //
-  // This replaces the old:
-  //
-  // const [answer, setAnswer] = useState("");
-  //
-  const [
-    agentResponse,
-    setAgentResponse,
-  ] = useState(null);
+  // Every turn of the conversation for this home, oldest first.
+  // Each turn is the complete structured response from /ask plus
+  // the question that produced it.
+  const [turns, setTurns] = useState([]);
 
   const [isAsking, setIsAsking] =
     useState(false);
@@ -68,33 +152,54 @@ function AgentPanel({
     event.preventDefault();
 
     if (!selectedHome) {
-      alert(
+      setAskError(
         "Create or select a home first."
       );
       return;
     }
 
     if (!question.trim()) {
-      alert(
+      setAskError(
         "Tell HouseIQ something or ask a question."
       );
       return;
     }
 
+    const askedQuestion = question.trim();
+
     try {
       setIsAsking(true);
       setAskError("");
-      setAgentResponse(null);
 
       const response = await api.post(
         `${API_URL}/homes/${selectedHome.id}/ask`,
         {
-          question: question.trim(),
+          question: askedQuestion,
+          conversationHistory:
+            buildConversationHistory(turns),
         }
       );
 
-      // Save the complete response instead of only the answer.
-      setAgentResponse(response.data);
+      const data = response.data;
+
+      // Append this turn to the running conversation instead of
+      // replacing a single "latest response" slot.
+      setTurns((previousTurns) => [
+        ...previousTurns,
+        {
+          id:
+            data.agentRunId ||
+            `${Date.now()}-${previousTurns.length}`,
+          question: askedQuestion,
+          answer: data.answer,
+          confidence: data.confidence,
+          needsMoreInfo: data.needsMoreInfo,
+          clarifyingQuestions:
+            data.clarifyingQuestions || [],
+          actionsTaken: data.actionsTaken || [],
+          contextUsed: data.contextUsed || null,
+        },
+      ]);
 
       // Clear the input after a successful request.
       setQuestion("");
@@ -122,11 +227,64 @@ function AgentPanel({
 
 
   // -----------------------------------------------------
+  // HANDLE A CLICK ON AN ACTION CHIP
+  // -----------------------------------------------------
+
+  function handleActionChipClick(action) {
+    const tabName = mapActionTypeToTab(action.type);
+
+    if (tabName) {
+      onNavigateTab?.(tabName);
+    }
+  }
+
+
+  // -----------------------------------------------------
+  // COMPACT CONTEXT-USED SUMMARY FOR A SINGLE TURN
+  // -----------------------------------------------------
+
+  function renderContextUsedSummary(contextUsed) {
+    if (!contextUsed) {
+      return null;
+    }
+
+    const summary = [
+      contextUsed.counts?.profileFields
+        ? `${contextUsed.counts.profileFields} profile facts`
+        : null,
+      contextUsed.counts?.memories
+        ? `${contextUsed.counts.memories} memories`
+        : null,
+      contextUsed.counts?.issues
+        ? `${contextUsed.counts.issues} open issues`
+        : null,
+      contextUsed.counts?.projects
+        ? `${contextUsed.counts.projects} projects`
+        : null,
+      contextUsed.counts?.assets
+        ? `${contextUsed.counts.assets} assets`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    return (
+      <p className="turn-context-used">
+        Used: {summary || "No stored home context yet"}
+      </p>
+    );
+  }
+
+
+  // -----------------------------------------------------
   // PANEL
   // -----------------------------------------------------
 
   return (
-    <section className="agent-section">
+    <section
+      id="houseiq-agent-section"
+      className="agent-section"
+    >
       <div className="section-heading">
         <div>
           <p className="eyebrow">
@@ -148,6 +306,7 @@ function AgentPanel({
         className="agent-form"
       >
         <textarea
+          id="houseiq-agent-textarea"
           value={question}
           onChange={(event) =>
             setQuestion(
@@ -181,157 +340,99 @@ function AgentPanel({
 
 
       {/* ---------------------------- */}
-      {/* STRUCTURED AGENT RESPONSE    */}
+      {/* CONVERSATION TURN HISTORY    */}
       {/* ---------------------------- */}
 
-      {agentResponse && (
-        <div className="agent-response">
-          <div className="agent-response-header">
-            <div>
-              <p className="eyebrow">
-                HouseIQ response
-              </p>
-
-              <h3>
-                Recommended next step
-              </h3>
-            </div>
-
-            <span
-              className={`confidence-badge confidence-${agentResponse.confidence}`}
+      {turns.length > 0 && (
+        <div className="turn-list">
+          {turns.map((turn) => (
+            <div
+              key={turn.id}
+              className="turn-item"
             >
-              {formatLabel(
-                agentResponse.confidence
-              )}{" "}
-              confidence
-            </span>
-          </div>
+              <div className="turn-question">
+                <span className="turn-question-label">
+                  You asked
+                </span>
 
-          <div className="answer-box">
-            {agentResponse.answer}
-          </div>
+                <p>{turn.question}</p>
+              </div>
 
-          {agentResponse.contextUsed && (
-            <section className="context-used-section">
-              <h4>
-                Used for this answer
-              </h4>
+              <div className="turn-response">
+                <div className="turn-response-header">
+                  <span className="turn-response-label">
+                    HouseIQ
+                  </span>
 
-              <p className="context-used-summary">
-                {[
-                  agentResponse.contextUsed
-                    .counts?.profileFields
-                    ? `${agentResponse.contextUsed.counts.profileFields} profile facts`
-                    : null,
-                  agentResponse.contextUsed
-                    .counts?.memories
-                    ? `${agentResponse.contextUsed.counts.memories} memories`
-                    : null,
-                  agentResponse.contextUsed
-                    .counts?.issues
-                    ? `${agentResponse.contextUsed.counts.issues} open issues`
-                    : null,
-                  agentResponse.contextUsed
-                    .counts?.projects
-                    ? `${agentResponse.contextUsed.counts.projects} projects`
-                    : null,
-                  agentResponse.contextUsed
-                    .counts?.assets
-                    ? `${agentResponse.contextUsed.counts.assets} assets`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") ||
-                  "No stored home context yet"}
-              </p>
+                  <span
+                    className={`confidence-badge confidence-${turn.confidence}`}
+                  >
+                    {formatLabel(turn.confidence)}{" "}
+                    confidence
+                  </span>
+                </div>
 
-              {(agentResponse.contextUsed
-                .issueTitles?.length > 0 ||
-                agentResponse.contextUsed
-                  .memoryTitles?.length > 0) && (
-                <ul className="context-used-list">
-                  {agentResponse.contextUsed.issueTitles
-                    ?.slice(0, 3)
-                    .map((title) => (
-                      <li key={`issue-${title}`}>
-                        Issue: {title}
-                      </li>
-                    ))}
-                  {agentResponse.contextUsed.memoryTitles
-                    ?.slice(0, 3)
-                    .map((title) => (
-                      <li key={`memory-${title}`}>
-                        Memory: {title}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </section>
-          )}
+                <div className="answer-box">
+                  {turn.answer}
+                </div>
 
-          {agentResponse.needsMoreInfo &&
-            agentResponse
-              .clarifyingQuestions
-              ?.length > 0 && (
-              <section className="clarifying-section">
-                <h4>
-                  Questions HouseIQ needs answered
-                </h4>
+                {renderContextUsedSummary(
+                  turn.contextUsed
+                )}
 
-                <ol>
-                  {agentResponse.clarifyingQuestions.map(
-                    (item, index) => (
-                      <li
-                        key={`${item}-${index}`}
-                      >
-                        {item}
-                      </li>
-                    )
+                {turn.needsMoreInfo &&
+                  turn.clarifyingQuestions?.length > 0 && (
+                    <section className="clarifying-section">
+                      <h4>
+                        Questions HouseIQ needs answered
+                      </h4>
+
+                      <ol>
+                        {turn.clarifyingQuestions.map(
+                          (item, index) => (
+                            <li
+                              key={`${turn.id}-${index}`}
+                            >
+                              {item}
+                            </li>
+                          )
+                        )}
+                      </ol>
+                    </section>
                   )}
-                </ol>
-              </section>
-            )}
 
-          <section className="actions-section">
-            <h4>
-              What HouseIQ updated
-            </h4>
+                {turn.actionsTaken?.length > 0 && (
+                  <div className="action-chip-list">
+                    {turn.actionsTaken.map(
+                      (action, index) => {
+                        const tabName =
+                          mapActionTypeToTab(action.type);
 
-            {agentResponse.actionsTaken
-              ?.length > 0 ? (
-              <div className="action-list">
-                {agentResponse.actionsTaken.map(
-                  (action, index) => (
-                    <div
-                      key={`${action.recordId}-${index}`}
-                      className="action-item"
-                    >
-                      <span className="action-icon">
-                        ✓
-                      </span>
+                        return (
+                          <button
+                            key={`${turn.id}-${action.recordId}-${index}`}
+                            type="button"
+                            className="action-chip"
+                            disabled={!tabName}
+                            onClick={() =>
+                              handleActionChipClick(action)
+                            }
+                          >
+                            <span className="action-chip-icon">
+                              ✓
+                            </span>
 
-                      <div>
-                        <strong>
-                          {formatLabel(
-                            action.type
-                          )}
-                        </strong>
-
-                        <p>
-                          {action.title}
-                        </p>
-                      </div>
-                    </div>
-                  )
+                            {formatLabel(action.type)}:{" "}
+                            {action.title}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
                 )}
               </div>
-            ) : (
-              <p className="empty-state">
-                HouseIQ answered without creating
-                any new records.
-              </p>
-            )}
-          </section>
+            </div>
+          ))}
         </div>
       )}
     </section>
