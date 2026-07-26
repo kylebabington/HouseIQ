@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS home_profiles (
   -- Garage and lot
   garage_type STRING,
   garage_spaces INT,
-  lot_size_sq_ft INT,
+  lot_size_acres DECIMAL,
 
   -- Tracks progress through the future onboarding flow.
   onboarding_status STRING
@@ -143,8 +143,8 @@ CREATE TABLE IF NOT EXISTS home_profiles (
 
   CONSTRAINT home_profiles_lot_size_check
     CHECK (
-      lot_size_sq_ft IS NULL
-      OR lot_size_sq_ft > 0
+      lot_size_acres IS NULL
+      OR lot_size_acres > 0
     ),
 
   CONSTRAINT home_profiles_onboarding_status_check
@@ -430,6 +430,35 @@ NOT NULL DEFAULT '[]'::JSONB;
 ALTER TABLE agent_runs
 ADD COLUMN IF NOT EXISTS actions_taken JSONB
 NOT NULL DEFAULT '[]'::JSONB;
+
+
+-- Home profile lot size is stored in acres (decimal), not
+-- square feet. Add the acres column for existing tables, then
+-- drop the legacy square-foot column when present.
+--
+ALTER TABLE home_profiles
+ADD COLUMN IF NOT EXISTS lot_size_acres DECIMAL;
+
+-- Backfill from legacy column only if it exists.
+-- Exclude zero values to satisfy the > 0 constraint.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'home_profiles'
+      AND column_name = 'lot_size_sq_ft'
+  ) THEN
+    UPDATE home_profiles
+    SET lot_size_acres = lot_size_sq_ft / 43560.0
+    WHERE lot_size_sq_ft IS NOT NULL
+      AND lot_size_sq_ft > 0
+      AND lot_size_acres IS NULL;
+  END IF;
+END $$;
+
+ALTER TABLE home_profiles
+DROP COLUMN IF EXISTS lot_size_sq_ft;
 
 
 -- ---------------------------------------------------------
