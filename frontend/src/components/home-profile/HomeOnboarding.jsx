@@ -1,6 +1,7 @@
 // frontend/src/components/home-profile/HomeOnboarding.jsx
 
 import {
+    useEffect,
     useMemo,
     useState,
 } from "react";
@@ -911,6 +912,71 @@ function HomeOnboarding({
         "completed";
 
 
+    // Heal inconsistent state: in_progress with no resolvable
+    // question (invalid/missing step and every catalog field known).
+    useEffect(() => {
+        if (
+            !profile ||
+            profile.onboardingStatus !==
+            "in_progress" ||
+            currentQuestionIndex !==
+            -1
+        ) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function healCompletedOnboarding() {
+            try {
+                setIsSaving(true);
+                setErrorMessage("");
+
+                await onSave({
+                    onboardingStatus:
+                        "completed",
+
+                    onboardingStep:
+                        null,
+                });
+
+                if (!cancelled) {
+                    setCompletionMessage(
+                        "The initial profile questions are already complete."
+                    );
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    console.error(
+                        "Home onboarding heal failed:",
+                        error
+                    );
+
+                    setErrorMessage(
+                        error.response?.data?.error ||
+                        error.message ||
+                        "HouseIQ could not update onboarding status."
+                    );
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsSaving(false);
+                }
+            }
+        }
+
+        healCompletedOnboarding();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        profile,
+        currentQuestionIndex,
+        onSave,
+    ]);
+
+
     function getNextQuestion(
         currentIndex
     ) {
@@ -1249,7 +1315,12 @@ function HomeOnboarding({
     }
 
 
-    if (isCompleted) {
+    // Treat a missing current question the same as completed so the
+    // active-step view never reads properties off undefined.
+    if (
+        isCompleted ||
+        !currentQuestion
+    ) {
         return (
             <section className="home-onboarding home-onboarding-complete">
                 <div>
