@@ -21,6 +21,10 @@ import {
 } from "../middleware/ownership.js";
 
 import {
+    askRateLimit,
+} from "../middleware/rateLimit.js";
+
+import {
     createAssetRecord,
     createIssueRecord,
     createMemoryRecord,
@@ -89,6 +93,12 @@ export function createAgentRouter() {
     router.post(
         "/homes/:homeId/ask",
         requireAuth,
+
+        // requireAuth runs first so req.auth.payload.sub is
+        // available for askRateLimit to key the limit on the
+        // authenticated user rather than only their IP address.
+        askRateLimit,
+
         requireHomeOwnership,
         async (req, res) => {
             const homeId = req.authorizedHomeId;
@@ -694,7 +704,7 @@ export function createAgentRouter() {
                 }
 
                 console.error(
-                    "Error running HouseIQ agent:",
+                    `Error running HouseIQ agent [requestId=${req.requestId}]:`,
                     error
                 );
 
@@ -753,6 +763,7 @@ export function createAgentRouter() {
 
                 return res.status(500).json({
                     error: "HouseIQ could not process the request",
+                    requestId: req.requestId,
                 });
             } finally {
                 // Return the database connection to the pool.

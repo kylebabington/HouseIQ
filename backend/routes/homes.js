@@ -43,28 +43,27 @@ export function createHomesRouter() {
                     req
                 );
 
-            return res.json({
-                authenticated:
-                    true,
+            const claims =
+                req.auth.payload || {};
 
-                auth0UserId,
+            // Only return the specific claims the frontend needs.
+            //
+            // API access tokens can carry many other claims (scope,
+            // permissions, custom namespaced fields, etc.) that
+            // should not be exposed to the client.
+            return res.json({
+                sub:
+                    auth0UserId,
 
                 // Email and name may not be included in an
                 // API access token. Null is acceptable here.
                 email:
-                    req.auth.payload.email ||
+                    claims.email ||
                     null,
 
                 name:
-                    req.auth.payload.name ||
+                    claims.name ||
                     null,
-
-                // Returning all claims is useful for this
-                // temporary authentication test.
-                //
-                // We can remove this later.
-                claims:
-                    req.auth.payload,
             });
         }
     );

@@ -48,6 +48,9 @@ const USER_A_MEMORY_ID =
 const USER_A_AGENT_RUN_ID =
     "77777777-7777-4777-8777-777777777777";
 
+const USER_A_NEW_MEMORY_ID =
+    "88888888-8888-4888-8888-888888888888";
+
 
 // ---------------------------------------------------------
 // HOISTED DATABASE AND AI MOCKS
@@ -816,6 +819,52 @@ beforeEach(() => {
 
 
             // ---------------------------------------------
+            // INSERT A NEW MEMORY (created by the agent)
+            // ---------------------------------------------
+
+            if (
+                normalizedSql.includes(
+                    "insert into memories"
+                )
+            ) {
+                const [
+                    homeId,
+                    assetId,
+                    title,
+                    category,
+                    content,
+                    metadataJson,
+                    embeddingSql,
+                    importance,
+                ] = parameters;
+
+                const createdMemory = {
+                    id: USER_A_NEW_MEMORY_ID,
+                    home_id: homeId,
+                    asset_id: assetId,
+                    title,
+                    category,
+                    content,
+                    metadata: JSON.parse(metadataJson),
+                    importance,
+                    created_at:
+                        "2026-07-25T10:00:00.000Z",
+                    updated_at:
+                        "2026-07-25T10:00:00.000Z",
+                };
+
+                testDatabase.memories.push(
+                    createdMemory
+                );
+
+                return {
+                    rows: [createdMemory],
+                    rowCount: 1,
+                };
+            }
+
+
+            // ---------------------------------------------
             // INSERT AGENT RUN
             // ---------------------------------------------
 
@@ -1044,6 +1093,89 @@ describe(
                 expect(
                     generateHouseAgentResponse
                 ).not.toHaveBeenCalled();
+            }
+        );
+
+
+        test(
+            "when the agent returns a memory to create, the response's actionsTaken and createdRecords include it",
+            async () => {
+                mockGenerateHouseAgentResponse.mockResolvedValue({
+                    answer:
+                        "I've saved that as a memory for this home.",
+
+                    confidence:
+                        "high",
+
+                    needsMoreInfo:
+                        false,
+
+                    clarifyingQuestions:
+                        [],
+
+                    memoriesToCreate: [
+                        {
+                            title:
+                                "Water heater installed in 2020",
+
+                            category:
+                                "plumbing",
+
+                            content:
+                                "The tankless water heater was installed in 2020.",
+
+                            importance:
+                                4,
+                        },
+                    ],
+
+                    issuesToCreate:
+                        [],
+
+                    projectsToCreate:
+                        [],
+
+                    assetsToCreate:
+                        [],
+                });
+
+                const response =
+                    await request(app)
+                        .post(
+                            `/api/homes/${USER_A_HOME_ID}/ask`
+                        )
+                        .set(
+                            "x-test-user-id",
+                            USER_A_ID
+                        )
+                        .send({
+                            question:
+                                "Remember that my water heater was installed in 2020.",
+                        });
+
+                expect(
+                    response.status
+                ).toBe(200);
+
+                expect(
+                    response.body.actionsTaken
+                ).toContainEqual({
+                    type: "memory_created",
+                    recordId: USER_A_NEW_MEMORY_ID,
+                    title: "Water heater installed in 2020",
+                });
+
+                expect(
+                    response.body.createdRecords.memories
+                ).toHaveLength(1);
+
+                expect(
+                    response.body.createdRecords.memories[0].id
+                ).toBe(USER_A_NEW_MEMORY_ID);
+
+                expect(
+                    response.body.createdRecords.memories[0].title
+                ).toBe("Water heater installed in 2020");
             }
         );
     }
