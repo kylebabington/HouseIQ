@@ -804,11 +804,12 @@ describe(
                         "Home not found",
                 });
 
-                // Only the ownership query should run.
+                // Ownership check may probe home_members then fall
+                // back to the homes owner query.
                 expect(
                     mockPoolQuery
                 ).toHaveBeenCalledTimes(
-                    1
+                    2
                 );
             }
         );
@@ -939,10 +940,12 @@ describe(
                     testDatabase.profiles
                 ).toHaveLength(0);
 
+                // Ownership check may probe home_members then fall
+                // back to the homes owner query.
                 expect(
                     mockPoolQuery
                 ).toHaveBeenCalledTimes(
-                    1
+                    2
                 );
             }
         );

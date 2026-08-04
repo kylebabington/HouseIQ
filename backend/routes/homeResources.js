@@ -20,6 +20,8 @@ import {
 } from "../middleware/ownership.js";
 
 import {
+    createAssetRecord,
+    createIssueRecord,
     createMemoryRecord,
 } from "../services/recordHelpers.js";
 
@@ -83,10 +85,26 @@ export function createHomeResourcesRouter() {
 
                 const result = await pool.query(
                     `
-          SELECT *
+          SELECT
+            memories.id,
+            memories.home_id,
+            memories.asset_id,
+            memories.title,
+            memories.category,
+            memories.content,
+            memories.metadata,
+            memories.importance,
+            memories.source_document_id,
+            memories.source_agent_run_id,
+            memories.created_at,
+            memories.updated_at,
+            documents.file_name AS source_file_name,
+            documents.document_type AS source_document_type
           FROM memories
-          WHERE home_id = $1
-          ORDER BY created_at DESC
+          LEFT JOIN documents
+            ON documents.id = memories.source_document_id
+          WHERE memories.home_id = $1
+          ORDER BY memories.created_at DESC
           `,
                     [homeId]
                 );
@@ -175,18 +193,23 @@ export function createHomeResourcesRouter() {
 
                 const result = await pool.query(
                     `
-                SELECT *
+                SELECT
+                    home_issues.*,
+                    documents.file_name AS source_file_name,
+                    documents.document_type AS source_document_type
                 FROM home_issues
-                WHERE home_id = $1
+                LEFT JOIN documents
+                    ON documents.id = home_issues.source_document_id
+                WHERE home_issues.home_id = $1
                 ORDER BY
-                    CASE priority
+                    CASE home_issues.priority
                         WHEN 'urgent' THEN 1
                         WHEN 'high' THEN 2
                         WHEN 'medium' THEN 3
                         WHEN 'low' THEN 4
                         ELSE 5
                     END,
-                    created_at DESC
+                    home_issues.created_at DESC
                 `,
                     [homeId]
                 );
@@ -224,10 +247,15 @@ export function createHomeResourcesRouter() {
                 // Get every project for this home.
                 const projectsResult = await pool.query(
                     `
-                SELECT *
+                SELECT
+                    home_projects.*,
+                    documents.file_name AS source_file_name,
+                    documents.document_type AS source_document_type
                 FROM home_projects
-                WHERE home_id = $1
-                ORDER BY created_at DESC
+                LEFT JOIN documents
+                    ON documents.id = home_projects.source_document_id
+                WHERE home_projects.home_id = $1
+                ORDER BY home_projects.created_at DESC
                 `,
                     [homeId]
                 );
@@ -309,10 +337,15 @@ export function createHomeResourcesRouter() {
 
                 const result = await pool.query(
                     `
-                SELECT *
+                SELECT
+                    home_assets.*,
+                    documents.file_name AS source_file_name,
+                    documents.document_type AS source_document_type
                 FROM home_assets
-                WHERE home_id = $1
-                ORDER BY created_at DESC
+                LEFT JOIN documents
+                    ON documents.id = home_assets.source_document_id
+                WHERE home_assets.home_id = $1
+                ORDER BY home_assets.created_at DESC
                 `,
                     [homeId]
                 );
@@ -329,6 +362,95 @@ export function createHomeResourcesRouter() {
                 });
             }
         });
+
+    // Manual issue create (homeowner-owned memory graph).
+    router.post(
+        "/homes/:homeId/issues",
+        requireAuth,
+        requireHomeOwnership,
+        async (req, res) => {
+            try {
+                const homeId = req.authorizedHomeId;
+                const {
+                    title,
+                    description,
+                    priority,
+                    category,
+                    suspectedCause,
+                    recommendedNextStep,
+                } = req.body || {};
+
+                if (!title?.trim()) {
+                    return res.status(400).json({
+                        error: "Issue title is required",
+                    });
+                }
+
+                const issue = await createIssueRecord({
+                    homeId,
+                    title,
+                    description,
+                    priority,
+                    category,
+                    suspectedCause,
+                    recommendedNextStep,
+                });
+
+                return res.status(201).json(issue);
+            } catch (error) {
+                console.error(
+                    "Error creating issue:",
+                    error
+                );
+                return res.status(500).json({
+                    error: "Failed to create issue",
+                });
+            }
+        }
+    );
+
+    router.post(
+        "/homes/:homeId/assets",
+        requireAuth,
+        requireHomeOwnership,
+        async (req, res) => {
+            try {
+                const homeId = req.authorizedHomeId;
+                const {
+                    assetType,
+                    name,
+                    brand,
+                    model,
+                    serialNumber,
+                    location,
+                    notes,
+                } = req.body || {};
+
+                const asset = await createAssetRecord({
+                    homeId,
+                    assetType,
+                    name,
+                    brand,
+                    model,
+                    serialNumber,
+                    location,
+                    notes,
+                });
+
+                return res.status(201).json(asset);
+            } catch (error) {
+                console.error(
+                    "Error creating asset:",
+                    error
+                );
+                return res.status(500).json({
+                    error:
+                        error.message ||
+                        "Failed to create asset",
+                });
+            }
+        }
+    );
 
     return router;
 }

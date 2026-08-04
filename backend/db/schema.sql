@@ -76,6 +76,11 @@ CREATE TABLE IF NOT EXISTS home_profiles (
   garage_spaces INT,
   lot_size_acres DECIMAL,
 
+  -- Location for seasonal / climate context
+  postal_code STRING,
+  city STRING,
+  state STRING,
+
   -- Tracks progress through the future onboarding flow.
   onboarding_status STRING
     NOT NULL
@@ -449,10 +454,104 @@ ALTER TABLE home_profiles
 DROP COLUMN IF EXISTS lot_size_sq_ft;
 
 
+-- Provenance: which document or agent run created a record.
+-- Added via ALTER so CREATE TABLE order stays free of
+-- forward references to documents / agent_runs.
+--
+ALTER TABLE memories
+ADD COLUMN IF NOT EXISTS source_document_id UUID
+REFERENCES documents(id)
+ON DELETE SET NULL;
+
+ALTER TABLE memories
+ADD COLUMN IF NOT EXISTS source_agent_run_id UUID
+REFERENCES agent_runs(id)
+ON DELETE SET NULL;
+
+ALTER TABLE home_issues
+ADD COLUMN IF NOT EXISTS source_document_id UUID
+REFERENCES documents(id)
+ON DELETE SET NULL;
+
+ALTER TABLE home_issues
+ADD COLUMN IF NOT EXISTS source_agent_run_id UUID
+REFERENCES agent_runs(id)
+ON DELETE SET NULL;
+
+ALTER TABLE home_projects
+ADD COLUMN IF NOT EXISTS source_document_id UUID
+REFERENCES documents(id)
+ON DELETE SET NULL;
+
+ALTER TABLE home_projects
+ADD COLUMN IF NOT EXISTS source_agent_run_id UUID
+REFERENCES agent_runs(id)
+ON DELETE SET NULL;
+
+ALTER TABLE home_assets
+ADD COLUMN IF NOT EXISTS source_document_id UUID
+REFERENCES documents(id)
+ON DELETE SET NULL;
+
+ALTER TABLE home_assets
+ADD COLUMN IF NOT EXISTS source_agent_run_id UUID
+REFERENCES agent_runs(id)
+ON DELETE SET NULL;
+
+
+-- Location fields for climate / seasonal localization.
+--
+ALTER TABLE home_profiles
+ADD COLUMN IF NOT EXISTS postal_code STRING;
+
+ALTER TABLE home_profiles
+ADD COLUMN IF NOT EXISTS city STRING;
+
+ALTER TABLE home_profiles
+ADD COLUMN IF NOT EXISTS state STRING;
+
+
+-- ---------------------------------------------------------
+-- HOME MEMBERS (household sharing)
+-- ---------------------------------------------------------
+--
+-- A home can have multiple members with roles.
+-- The homes.owner_auth0_id column remains the canonical
+-- owner; home_members mirrors access for shared users.
+--
+CREATE TABLE IF NOT EXISTS home_members (
+  home_id UUID NOT NULL
+    REFERENCES homes(id)
+    ON DELETE CASCADE,
+
+  member_auth0_id STRING NOT NULL,
+
+  role STRING NOT NULL,
+
+  invited_email STRING,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  PRIMARY KEY (home_id, member_auth0_id),
+
+  CONSTRAINT home_members_role_check
+    CHECK (role IN ('owner', 'member', 'viewer'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_home_members_member_auth0_id
+ON home_members (member_auth0_id);
+
+-- Backfill owner rows for existing homes.
+INSERT INTO home_members (home_id, member_auth0_id, role)
+SELECT id, owner_auth0_id, 'owner'
+FROM homes
+WHERE owner_auth0_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+
 -- ---------------------------------------------------------
 -- STANDARD INDEXES
 -- ---------------------------------------------------------
-
 
 -- Used by:
 --

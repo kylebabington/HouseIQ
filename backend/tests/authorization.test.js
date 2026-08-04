@@ -402,12 +402,12 @@ const mockQuery =
             // LIST MEMORIES FOR AN AUTHORIZED HOME
             // -------------------------------------------------
 
-            if (
+                if (
                 normalizedSql.includes(
                     "from memories"
                 ) &&
                 normalizedSql.includes(
-                    "where home_id = $1"
+                    "home_id = $1"
                 )
             ) {
                 const [homeId] =

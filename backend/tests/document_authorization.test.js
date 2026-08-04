@@ -1291,7 +1291,7 @@ describe(
 
 
         test(
-            "does not delete the database record when S3 deletion fails",
+            "still deletes the database record when S3 cleanup fails",
             async () => {
                 mockDeleteDocumentFromS3
                     .mockRejectedValueOnce(
@@ -1310,34 +1310,21 @@ describe(
                             USER_A_ID
                         );
 
+                // DB is removed first; S3 failures are logged but
+                // do not leave a row pointing at a missing object.
                 expect(
                     response.status
-                ).toBe(500);
-
-                expect(
-                    response.body
-                ).toEqual({
-                    error:
-                        "Document could not be deleted",
-                });
-
-
-                // The route deletes from S3 before opening the
-                // CockroachDB transaction. Therefore an S3
-                // failure must prevent all database mutation.
-                expect(
-                    mockPoolConnect
-                ).not.toHaveBeenCalled();
-
-                expect(
-                    mockClientQuery
-                ).not.toHaveBeenCalled();
+                ).toBe(200);
 
                 expect(
                     documentExists(
                         USER_A_DOCUMENT_ID
                     )
-                ).toBe(true);
+                ).toBe(false);
+
+                expect(
+                    mockDeleteDocumentFromS3
+                ).toHaveBeenCalled();
             }
         );
     }

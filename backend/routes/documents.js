@@ -29,6 +29,12 @@ import {
     createMemoryRecord,
     createProjectRecord,
     extractTextFromUploadedFile,
+    MAX_ASSETS_PER_RUN,
+    MAX_ISSUES_PER_RUN,
+    MAX_MEMORIES_PER_RUN,
+    MAX_PROJECTS_PER_RUN,
+    normalizeAssetKey,
+    prepareMemoryEmbedding,
 } from "../services/recordHelpers.js";
 
 import {
@@ -215,10 +221,19 @@ export function createDocumentsRouter(upload) {
         // Validate the Auth0 access token.
         requireAuth,
 
-        // Confirm the document belongs to one of the user's homes.
+        // Confirm the document belongs to a home the user can access.
         requireDocumentOwnership,
 
         async (req, res) => {
+            if (
+                req.homeMemberRole === "viewer"
+            ) {
+                return res.status(403).json({
+                    error:
+                        "You do not have permission for this action",
+                });
+            }
+
             const document =
                 req.authorizedDocument;
 
@@ -230,21 +245,12 @@ export function createDocumentsRouter(upload) {
                     null;
 
                 // -------------------------------------------------
-                // DELETE THE ORIGINAL PRIVATE FILE FROM S3
+                // DELETE THE COCKROACHDB RECORD FIRST
                 // -------------------------------------------------
                 //
-                // Older documents may not have an S3 object key.
+                // Prefer an orphaned S3 object over a DB row that
+                // points at a missing file.
                 //
-                if (s3Key) {
-                    await deleteDocumentFromS3({
-                        key:
-                            s3Key,
-                    });
-                }
-
-                // -------------------------------------------------
-                // DELETE THE COCKROACHDB RECORD
-                // -------------------------------------------------
 
                 client =
                     await pool.connect();
@@ -253,13 +259,6 @@ export function createDocumentsRouter(upload) {
                     "BEGIN"
                 );
 
-                // Include both the document ID and the authorized
-                // home ID as a defense-in-depth check.
-                //
-                // Even though the middleware already verified
-                // ownership, this ensures the deletion remains
-                // scoped to the same authorized parent home.
-                //
                 const deleteResult =
                     await client.query(
                         `
@@ -276,11 +275,6 @@ export function createDocumentsRouter(upload) {
                         ]
                     );
 
-                // This would be unusual because authorization
-                // already found the record. It could happen if the
-                // document was deleted by another request between
-                // the ownership check and this query.
-                //
                 if (
                     deleteResult.rows.length === 0
                 ) {
@@ -298,12 +292,29 @@ export function createDocumentsRouter(upload) {
                     "COMMIT"
                 );
 
-                const deletedDocument =
-                    deleteResult.rows[0];
+                client.release();
+                client = null;
 
                 // -------------------------------------------------
-                // RETURN SUCCESS
+                // THEN REMOVE THE PRIVATE S3 OBJECT
                 // -------------------------------------------------
+
+                if (s3Key) {
+                    try {
+                        await deleteDocumentFromS3({
+                            key:
+                                s3Key,
+                        });
+                    } catch (s3Error) {
+                        console.error(
+                            "Document DB deleted but S3 cleanup failed:",
+                            s3Error
+                        );
+                    }
+                }
+
+                const deletedDocument =
+                    deleteResult.rows[0];
 
                 return res.json({
                     message:
@@ -443,6 +454,98 @@ export function createDocumentsRouter(upload) {
 
                         extractedText,
                     });
+
+                // Cap side effects the same way /ask does.
+                const memoriesToCreate = (
+                    analysis.memoriesToCreate || []
+                ).slice(0, MAX_MEMORIES_PER_RUN);
+
+                const issuesToCreate = (
+                    analysis.issuesToCreate || []
+                ).slice(0, MAX_ISSUES_PER_RUN);
+
+                const projectsToCreate = (
+                    analysis.projectsToCreate || []
+                ).slice(0, MAX_PROJECTS_PER_RUN);
+
+                let assetsToCreate = (
+                    analysis.assetsToCreate || []
+                ).slice(0, MAX_ASSETS_PER_RUN);
+
+                const existingAssetsResult =
+                    await pool.query(
+                        `
+                        SELECT asset_type, name
+                        FROM home_assets
+                        WHERE home_id = $1
+                        `,
+                        [homeId]
+                    );
+
+                const existingAssetKeys = new Set(
+                    existingAssetsResult.rows.map(
+                        (row) =>
+                            normalizeAssetKey(
+                                row.asset_type,
+                                row.name
+                            )
+                    )
+                );
+
+                assetsToCreate =
+                    assetsToCreate.filter(
+                        (assetInput) => {
+                            const key =
+                                normalizeAssetKey(
+                                    assetInput.assetType,
+                                    assetInput.name
+                                );
+
+                            if (
+                                existingAssetKeys.has(
+                                    key
+                                )
+                            ) {
+                                return false;
+                            }
+
+                            existingAssetKeys.add(
+                                key
+                            );
+                            return true;
+                        }
+                    );
+
+                // Embed memories before opening a DB transaction.
+                const memoryEmbeddings =
+                    await Promise.all(
+                        memoriesToCreate.map(
+                            async (memoryInput) => {
+                                const title =
+                                    memoryInput.title?.trim() ||
+                                    "Untitled memory";
+                                const category =
+                                    memoryInput.category?.trim() ||
+                                    "general";
+                                const content =
+                                    memoryInput.content?.trim() ||
+                                    "";
+
+                                return prepareMemoryEmbedding({
+                                    title,
+                                    category,
+                                    content,
+                                    metadata: {
+                                        source:
+                                            "document_analysis",
+                                        fileName:
+                                            req.file
+                                                .originalname,
+                                    },
+                                });
+                            }
+                        )
+                    );
 
 
                 // -------------------------------------------------
@@ -591,9 +694,13 @@ export function createDocumentsRouter(upload) {
                 // -------------------------------------------------
 
                 for (
-                    const memoryInput of
-                    analysis.memoriesToCreate
+                    let memoryIndex = 0;
+                    memoryIndex < memoriesToCreate.length;
+                    memoryIndex += 1
                 ) {
+                    const memoryInput =
+                        memoriesToCreate[memoryIndex];
+
                     const memory =
                         await createMemoryRecord({
                             homeId,
@@ -620,11 +727,17 @@ export function createDocumentsRouter(upload) {
                                 fileName:
                                     req.file.originalname,
 
-                                // This links the memory back to the
-                                // original S3 object.
                                 s3Key:
                                     uploadedS3Object.key,
                             },
+
+                            embeddingSql:
+                                memoryEmbeddings[
+                                    memoryIndex
+                                ],
+
+                            sourceDocumentId:
+                                document.id,
 
                             client,
                         });
@@ -652,7 +765,7 @@ export function createDocumentsRouter(upload) {
 
                 for (
                     const issueInput of
-                    analysis.issuesToCreate
+                    issuesToCreate
                 ) {
                     const issue =
                         await createIssueRecord({
@@ -675,6 +788,9 @@ export function createDocumentsRouter(upload) {
 
                             recommendedNextStep:
                                 issueInput.recommendedNextStep,
+
+                            sourceDocumentId:
+                                document.id,
 
                             client,
                         });
@@ -702,7 +818,7 @@ export function createDocumentsRouter(upload) {
 
                 for (
                     const projectInput of
-                    analysis.projectsToCreate
+                    projectsToCreate
                 ) {
                     const project =
                         await createProjectRecord({
@@ -736,6 +852,9 @@ export function createDocumentsRouter(upload) {
                             tasks:
                                 projectInput.tasks,
 
+                            sourceDocumentId:
+                                document.id,
+
                             client,
                         });
 
@@ -765,7 +884,7 @@ export function createDocumentsRouter(upload) {
 
                 for (
                     const assetInput of
-                    analysis.assetsToCreate
+                    assetsToCreate
                 ) {
                     const asset =
                         await createAssetRecord({
@@ -791,6 +910,9 @@ export function createDocumentsRouter(upload) {
 
                             notes:
                                 assetInput.notes,
+
+                            sourceDocumentId:
+                                document.id,
 
                             client,
                         });

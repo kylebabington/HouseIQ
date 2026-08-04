@@ -29,19 +29,21 @@ import {
     createIssueRecord,
     createMemoryRecord,
     createProjectRecord,
+    MAX_ASSETS_PER_RUN,
+    MAX_ISSUES_PER_RUN,
+    MAX_MEMORIES_PER_RUN,
+    MAX_PROJECTS_PER_RUN,
+    normalizeAssetKey,
+    prepareMemoryEmbedding,
 } from "../services/recordHelpers.js";
 
 import {
     formatHomeProfile,
 } from "../lib/homeProfile.js";
 
-// Caps on how many side-effect records the agent may create in a
-// single run. These protect against a single message accidentally
-// flooding a home with dozens of records.
-const MAX_MEMORIES_PER_RUN = 3;
-const MAX_ISSUES_PER_RUN = 2;
-const MAX_PROJECTS_PER_RUN = 1;
-const MAX_ASSETS_PER_RUN = 2;
+import {
+    formatLocalSeasonLine,
+} from "../lib/climateZones.js";
 
 // Profile fields that are internal bookkeeping rather than
 // physical facts about the home, excluded from contextUsed.
@@ -85,6 +87,48 @@ function sanitizeConversationHistory(rawHistory) {
 
 export function createAgentRouter() {
     const router = Router();
+
+    router.get(
+        "/homes/:homeId/agent-runs",
+        requireAuth,
+        requireHomeOwnership,
+        async (req, res) => {
+            try {
+                const homeId = req.authorizedHomeId;
+
+                const result = await pool.query(
+                    `
+                    SELECT
+                        id,
+                        user_question,
+                        answer,
+                        status,
+                        confidence,
+                        needs_more_info,
+                        clarifying_questions,
+                        actions_taken,
+                        created_at
+                    FROM agent_runs
+                    WHERE home_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                    `,
+                    [homeId]
+                );
+
+                return res.json(result.rows);
+            } catch (error) {
+                console.error(
+                    "Error fetching agent runs:",
+                    error
+                );
+                return res.status(500).json({
+                    error:
+                        "Failed to load advice history",
+                });
+            }
+        }
+    );
 
     // ---------------------------------------------------------
     // HOUSEIQ AGENT ENDPOINT
@@ -265,6 +309,13 @@ export function createAgentRouter() {
                         })
                         : null;
 
+                const localSeasonLine =
+                    formatLocalSeasonLine(
+                        profile?.postalCode ||
+                            profileResult.rows[0]
+                                ?.postal_code
+                    );
+
 
                 // -------------------------------------------------
                 // 4. ASK THE HOUSEIQ AGENT WHAT TO DO
@@ -281,6 +332,7 @@ export function createAgentRouter() {
                                 notes: home.notes,
                             },
                             profile,
+                            localSeasonLine,
                             memories: relevantMemories,
                             issues,
                             projects,
@@ -288,6 +340,92 @@ export function createAgentRouter() {
                             conversationHistory:
                                 sanitizedConversationHistory,
                         }
+                    );
+
+
+                // -------------------------------------------------
+                // 5b. CAP SIDE EFFECTS AND PRE-EMBED MEMORIES
+                // -------------------------------------------------
+                //
+                // Caps and embeddings happen *before* BEGIN so OpenAI
+                // latency never holds a transaction connection.
+                //
+                const memoriesToCreate = (
+                    agentResponse.memoriesToCreate || []
+                ).slice(0, MAX_MEMORIES_PER_RUN);
+
+                const issuesToCreate = (
+                    agentResponse.issuesToCreate || []
+                ).slice(0, MAX_ISSUES_PER_RUN);
+
+                const projectsToCreate = (
+                    agentResponse.projectsToCreate || []
+                ).slice(0, MAX_PROJECTS_PER_RUN);
+
+                let assetsToCreate = (
+                    agentResponse.assetsToCreate || []
+                ).slice(0, MAX_ASSETS_PER_RUN);
+
+                const existingAssetKeys = new Set(
+                    (assets || []).map((row) =>
+                        normalizeAssetKey(
+                            row.asset_type,
+                            row.name
+                        )
+                    )
+                );
+
+                assetsToCreate =
+                    assetsToCreate.filter(
+                        (assetInput) => {
+                            const key =
+                                normalizeAssetKey(
+                                    assetInput.assetType,
+                                    assetInput.name
+                                );
+
+                            if (
+                                existingAssetKeys.has(
+                                    key
+                                )
+                            ) {
+                                return false;
+                            }
+
+                            existingAssetKeys.add(
+                                key
+                            );
+                            return true;
+                        }
+                    );
+
+                const memoryEmbeddings =
+                    await Promise.all(
+                        memoriesToCreate.map(
+                            async (memoryInput) => {
+                                const title =
+                                    memoryInput.title?.trim() ||
+                                    "Untitled memory";
+                                const category =
+                                    memoryInput.category?.trim() ||
+                                    "general";
+                                const content =
+                                    memoryInput.content?.trim() ||
+                                    "";
+
+                                return prepareMemoryEmbedding({
+                                    title,
+                                    category,
+                                    content,
+                                    metadata: {
+                                        source:
+                                            "houseiq_agent",
+                                        originalQuestion:
+                                            question.trim(),
+                                    },
+                                });
+                            }
+                        )
                     );
 
 
@@ -322,39 +460,17 @@ export function createAgentRouter() {
 
 
                 // -------------------------------------------------
-                // 5b. CAP SIDE EFFECTS BEFORE CREATING RECORDS
-                // -------------------------------------------------
-                //
-                // A single misbehaving or overly eager model response
-                // should never be able to flood a home with dozens of
-                // records. These caps are enforced here regardless of
-                // what the model returned.
-                //
-                const memoriesToCreate = (
-                    agentResponse.memoriesToCreate || []
-                ).slice(0, MAX_MEMORIES_PER_RUN);
-
-                const issuesToCreate = (
-                    agentResponse.issuesToCreate || []
-                ).slice(0, MAX_ISSUES_PER_RUN);
-
-                const projectsToCreate = (
-                    agentResponse.projectsToCreate || []
-                ).slice(0, MAX_PROJECTS_PER_RUN);
-
-                const assetsToCreate = (
-                    agentResponse.assetsToCreate || []
-                ).slice(0, MAX_ASSETS_PER_RUN);
-
-
-                // -------------------------------------------------
                 // 6. CREATE MEMORIES
                 // -------------------------------------------------
 
                 for (
-                    const memoryInput of
-                    memoriesToCreate
+                    let memoryIndex = 0;
+                    memoryIndex < memoriesToCreate.length;
+                    memoryIndex += 1
                 ) {
+                    const memoryInput =
+                        memoriesToCreate[memoryIndex];
+
                     const createdMemory =
                         await createMemoryRecord({
                             homeId,
@@ -376,6 +492,11 @@ export function createAgentRouter() {
                                 originalQuestion:
                                     question.trim(),
                             },
+
+                            embeddingSql:
+                                memoryEmbeddings[
+                                    memoryIndex
+                                ],
 
                             client,
                         });
