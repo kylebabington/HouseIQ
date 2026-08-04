@@ -804,11 +804,12 @@ describe(
                         "Home not found",
                 });
 
-                // Owner-only check issues a single homes query.
+                // Ownership check may probe home_members then fall
+                // back to the homes owner query.
                 expect(
                     mockPoolQuery
                 ).toHaveBeenCalledTimes(
-                    1
+                    2
                 );
             }
         );
@@ -939,12 +940,12 @@ describe(
                     testDatabase.profiles
                 ).toHaveLength(0);
 
-                // Owner-only check issues a single homes query
-                // and never reaches the profile mutation.
+                // Ownership check may probe home_members then fall
+                // back to the homes owner query.
                 expect(
                     mockPoolQuery
                 ).toHaveBeenCalledTimes(
-                    1
+                    2
                 );
             }
         );

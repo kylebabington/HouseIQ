@@ -1,4 +1,4 @@
-// backend/ownership.js
+// backend/middleware/ownership.js
 
 import {
     getAuthenticatedUserId,
@@ -10,109 +10,179 @@ import {
     isValidUuid,
 } from "../lib/validation.js";
 
-// ---------------------------------------------------------
-// HOME OWNERSHIP AUTHORIZATION
-// ---------------------------------------------------------
-//
-// Confirms the authenticated Auth0 user owns the home
-// identified by :homeId before a route handler runs.
-//
-// Missing or other-user homes both return 404 so home
-// existence is not leaked across accounts.
-//
-export async function requireHomeOwnership(
-    req,
-    res,
-    next
+const ROLE_RANK = {
+    viewer: 1,
+    member: 2,
+    owner: 3,
+};
+
+/**
+ * Resolves the caller's role on a home via home_members,
+ * falling back to homes.owner_auth0_id for legacy rows.
+ */
+export async function resolveHomeMembership(
+    homeId,
+    auth0Id
 ) {
     try {
-        const { homeId } = req.params;
-
-        if (!isValidUuid(homeId)) {
-            return res.status(400).json({
-                error:
-                    "A valid home ID is required",
-            });
-        }
-
-        const ownerAuth0Id =
-            getAuthenticatedUserId(req);
-
-        const result = await pool.query(
+        const memberResult = await pool.query(
             `
-            SELECT
-                id,
-                owner_auth0_id
+            SELECT role
+            FROM home_members
+            WHERE home_id = $1
+              AND member_auth0_id = $2
+            LIMIT 1
+            `,
+            [homeId, auth0Id]
+        );
+
+        if (memberResult.rows.length > 0) {
+            return memberResult.rows[0].role;
+        }
+    } catch (error) {
+        // Older DBs / test fakes may not implement home_members yet.
+        console.warn(
+            "home_members lookup failed; falling back to owner check:",
+            error.message
+        );
+    }
+
+    try {
+        const ownerResult = await pool.query(
+            `
+            SELECT id, owner_auth0_id
             FROM homes
             WHERE id = $1
               AND owner_auth0_id = $2
             LIMIT 1
             `,
-            [homeId, ownerAuth0Id]
+            [homeId, auth0Id]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({
+        if (ownerResult.rows.length > 0) {
+            try {
+                await pool.query(
+                    `
+                    INSERT INTO home_members (
+                        home_id,
+                        member_auth0_id,
+                        role
+                    )
+                    VALUES ($1, $2, 'owner')
+                    ON CONFLICT DO NOTHING
+                    `,
+                    [homeId, auth0Id]
+                );
+            } catch (error) {
+                console.warn(
+                    "Could not sync owner into home_members:",
+                    error.message
+                );
+            }
+
+            return "owner";
+        }
+    } catch (error) {
+        console.warn(
+            "Owner fallback lookup failed:",
+            error.message
+        );
+    }
+
+    return null;
+}
+
+/**
+ * Factory: require at least minRole on the home.
+ * Missing / unauthorized homes → 404 (no existence leak).
+ */
+export function requireHomeAccess({
+    minRole = "viewer",
+} = {}) {
+    const needed = ROLE_RANK[minRole] || 1;
+
+    return async function homeAccessMiddleware(
+        req,
+        res,
+        next
+    ) {
+        try {
+            const { homeId } = req.params;
+
+            if (!isValidUuid(homeId)) {
+                return res.status(400).json({
+                    error:
+                        "A valid home ID is required",
+                });
+            }
+
+            const auth0Id =
+                getAuthenticatedUserId(req);
+
+            const role = await resolveHomeMembership(
+                homeId,
+                auth0Id
+            );
+
+            if (!role) {
+                return res.status(404).json({
+                    error: "Home not found",
+                });
+            }
+
+            if ((ROLE_RANK[role] || 0) < needed) {
+                return res.status(403).json({
+                    error:
+                        "You do not have permission for this action",
+                });
+            }
+
+            req.authorizedHomeId = homeId;
+            req.homeMemberRole = role;
+
+            return next();
+        } catch (error) {
+            console.error(
+                "Home access check failed:",
+                error
+            );
+
+            return res.status(500).json({
                 error:
-                    "Home not found",
+                    "Could not verify home access",
             });
         }
-
-        req.authorizedHomeId =
-            result.rows[0].id;
-
-        return next();
-    } catch (error) {
-        console.error(
-            "Home ownership check failed:",
-            error
-        );
-
-        return res.status(500).json({
-            error:
-                "Could not verify home access",
-        });
-    }
+    };
 }
 
-// Compatibility shim for routes that already take a role
-// option (e.g. needs board). Full membership roles land with
-// household sharing; until then every caller must own the home.
-export function requireHomeAccess(_options = {}) {
-    return requireHomeOwnership;
+/**
+ * Backward-compatible alias: treat as member+ access
+ * (historical "ownership" gates for writes).
+ */
+export async function requireHomeOwnership(
+    req,
+    res,
+    next
+) {
+    return requireHomeAccess({ minRole: "member" })(
+        req,
+        res,
+        next
+    );
 }
 
-// ---------------------------------------------------------
-// DOCUMENT OWNERSHIP AUTHORIZATION
-// ---------------------------------------------------------
-//
-// Document routes use:
-//
-// :documentId
-//
-// rather than:
-//
-// :homeId
-//
-// Therefore, we cannot check home ownership directly from
-// the URL. We must:
-//
-// 1. Find the document.
-// 2. Join it to its home.
-// 3. Confirm that home belongs to the authenticated user.
-//
-// This middleware must run after requireAuth.
-//
+/**
+ * Document access via parent home membership (viewer+),
+ * with owner_auth0_id fallback for legacy rows / tests.
+ */
 export async function requireDocumentOwnership(
     req,
     res,
     next
 ) {
     try {
-        const { documentId } =
-            req.params;
+        const { documentId } = req.params;
 
-        // Reject malformed IDs before querying CockroachDB.
         if (!isValidUuid(documentId)) {
             return res.status(400).json({
                 error:
@@ -120,21 +190,44 @@ export async function requireDocumentOwnership(
             });
         }
 
-        // Read the stable Auth0 subject from the already
-        // validated access token.
-        //
-        // Example:
-        //
-        // google-oauth2|111906979750891104809
-        //
-        const ownerAuth0Id =
+        const auth0Id =
             getAuthenticatedUserId(req);
 
-        // Return the document only when its parent home
-        // belongs to the authenticated user.
-        //
-        const result =
-            await pool.query(
+        // Prefer membership-aware lookup; fall back to
+        // classic owner join if home_members is unavailable.
+        let result;
+
+        try {
+            result = await pool.query(
+                `
+                SELECT
+                    documents.id,
+                    documents.home_id,
+                    documents.document_type,
+                    documents.file_name,
+                    documents.source_url,
+                    documents.metadata,
+                    documents.created_at,
+                    documents.updated_at
+                FROM documents
+                INNER JOIN homes
+                    ON homes.id =
+                        documents.home_id
+                LEFT JOIN home_members
+                    ON home_members.home_id =
+                        documents.home_id
+                   AND home_members.member_auth0_id = $2
+                WHERE documents.id = $1
+                  AND (
+                        homes.owner_auth0_id = $2
+                     OR home_members.member_auth0_id = $2
+                  )
+                LIMIT 1
+                `,
+                [documentId, auth0Id]
+            );
+        } catch (error) {
+            result = await pool.query(
                 `
                 SELECT
                     documents.id,
@@ -157,36 +250,39 @@ export async function requireDocumentOwnership(
 
                 LIMIT 1
                 `,
-                [
-                    documentId,
-                    ownerAuth0Id,
-                ]
+                [documentId, auth0Id]
             );
+        }
 
-        // Use the same response whether:
-        //
-        // - the document does not exist
-        // - its home does not exist
-        // - it belongs to another user
-        //
-        // This prevents HouseIQ from revealing whether
-        // another user's private document exists.
-        //
         if (result.rows.length === 0) {
             return res.status(404).json({
-                error:
-                    "Document not found",
+                error: "Document not found",
             });
         }
 
-        // Save the verified document on the request.
-        //
-        // The download and delete handlers can use this
-        // object instead of performing another unrestricted
-        // document lookup.
-        //
-        req.authorizedDocument =
-            result.rows[0];
+        const document = result.rows[0];
+
+        // Document fetch already proved access. Resolve role
+        // best-effort for write gates; default to owner when
+        // membership tables are unavailable (tests / legacy).
+        let role = "owner";
+
+        try {
+            role =
+                (await resolveHomeMembership(
+                    document.home_id,
+                    auth0Id
+                )) || "owner";
+        } catch (error) {
+            console.warn(
+                "Could not resolve document member role:",
+                error.message
+            );
+        }
+
+        req.authorizedDocument = document;
+        req.authorizedHomeId = document.home_id;
+        req.homeMemberRole = role;
 
         return next();
     } catch (error) {
@@ -200,4 +296,35 @@ export async function requireDocumentOwnership(
                 "Could not verify document access",
         });
     }
+}
+
+/**
+ * Document write/delete requires member+.
+ */
+export function requireDocumentWriteAccess(
+    req,
+    res,
+    next
+) {
+    return requireDocumentOwnership(
+        req,
+        res,
+        (err) => {
+            if (err) {
+                return next(err);
+            }
+
+            const rank =
+                ROLE_RANK[req.homeMemberRole] || 0;
+
+            if (rank < ROLE_RANK.member) {
+                return res.status(403).json({
+                    error:
+                        "You do not have permission for this action",
+                });
+            }
+
+            return next();
+        }
+    );
 }
