@@ -11,6 +11,43 @@ import {
   formatLabel,
 } from "../../utils/formatters.js";
 
+import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+
+function assetAttentionLine(asset) {
+  const type = String(
+    asset.asset_type || ""
+  ).toLowerCase();
+
+  const intervals = {
+    furnace: [12, 18],
+    hvac: [12, 15],
+    water_heater: [12, 12],
+    roof: [24, 25],
+    air_conditioner: [12, 15],
+  };
+
+  const pair = intervals[type];
+  if (!pair) {
+    return null;
+  }
+
+  const raw =
+    asset.install_date || asset.purchase_date;
+  if (!raw) {
+    return `Typical service every ${pair[0]} mo · useful life ~${pair[1]} yr`;
+  }
+
+  const age =
+    (Date.now() - new Date(raw).getTime()) /
+    (1000 * 60 * 60 * 24 * 365.25);
+
+  if (Number.isNaN(age)) {
+    return null;
+  }
+
+  return `~${Math.round(age)} yr old · service every ${pair[0]} mo · useful life ~${pair[1]} yr`;
+}
+
 
 // ---------------------------------------------------------
 // API CONFIGURATION
@@ -36,6 +73,8 @@ function AssetsPanel({
   assets,
   homeId,
   onRecordsChanged,
+  highlightId,
+  onOpenDocument,
 }) {
   // The id of the asset currently in edit mode, or null.
   const [editingAssetId, setEditingAssetId] =
@@ -159,7 +198,12 @@ function AssetsPanel({
         return (
           <article
             key={asset.id}
-            className="record-card asset-card"
+            className={
+              highlightId === asset.id
+                ? "record-card asset-card record-highlight"
+                : "record-card asset-card"
+            }
+            id={`record-asset-${asset.id}`}
           >
             <div className="record-card-header">
               <div>
@@ -174,6 +218,25 @@ function AssetsPanel({
                 )}
               </div>
             </div>
+
+            <ProvenanceLine
+              sourceFileName={
+                asset.source_file_name
+              }
+              sourceDocumentType={
+                asset.source_document_type
+              }
+              sourceDocumentId={
+                asset.source_document_id
+              }
+              onOpenDocument={onOpenDocument}
+            />
+
+            {assetAttentionLine(asset) ? (
+              <p className="asset-attention">
+                {assetAttentionLine(asset)}
+              </p>
+            ) : null}
 
             {isEditing ? (
               <div className="record-edit-form">
