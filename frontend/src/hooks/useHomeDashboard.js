@@ -55,6 +55,16 @@ function useHomeDashboard({
     notes: "",
   });
 
+  // Set when GET /api/homes fails, so the shell can show a
+  // real error instead of a silently empty sidebar.
+  const [homesError, setHomesError] =
+    useState("");
+
+  // Set when the create-home form fails validation or the
+  // request itself fails, shown inline instead of alert().
+  const [createHomeError, setCreateHomeError] =
+    useState("");
+
 
   // -----------------------------------------------------
   // DASHBOARD DATA
@@ -290,6 +300,8 @@ function useHomeDashboard({
 
   async function fetchHomes() {
     try {
+      setHomesError("");
+
       const response = await api.get(
         `${API_URL}/homes`
       );
@@ -307,6 +319,12 @@ function useHomeDashboard({
       console.error(
         "Error fetching homes:",
         error
+      );
+
+      setHomesError(
+        error.response?.data?.details ||
+        error.response?.data?.error ||
+        "Could not load your homes."
       );
     }
   }
@@ -470,8 +488,12 @@ function useHomeDashboard({
   async function createHome(event) {
     event.preventDefault();
 
+    setCreateHomeError("");
+
     if (!homeForm.name.trim()) {
-      alert("Enter a name for the home.");
+      setCreateHomeError(
+        "Enter a name for the home."
+      );
       return;
     }
 
@@ -513,7 +535,7 @@ function useHomeDashboard({
         error
       );
 
-      alert(
+      setCreateHomeError(
         error.response?.data?.error ||
         "Could not create the home."
       );
@@ -775,11 +797,13 @@ function useHomeDashboard({
   return {
     // Homes
     homes,
+    homesError,
     selectedHome,
     homeForm,
     setHomeForm,
     selectHome,
     createHome,
+    createHomeError,
 
     // Dashboard records
     issues,

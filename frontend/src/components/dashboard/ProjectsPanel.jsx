@@ -1,13 +1,136 @@
 // frontend/src/components/dashboard/ProjectsPanel.jsx
 
 import {
+  useState,
+} from "react";
+
+import api from "../../api.js";
+
+import {
   formatCurrency,
   formatDate,
   formatLabel,
 } from "../../utils/formatters.js";
 
 
-function ProjectsPanel({ projects }) {
+// ---------------------------------------------------------
+// API CONFIGURATION
+// ---------------------------------------------------------
+
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:5000/api";
+
+
+// Matches the enums enforced by the backend PATCH routes.
+const PROJECT_STATUSES = [
+  "planned",
+  "in_progress",
+  "completed",
+  "cancelled",
+];
+
+
+function ProjectsPanel({
+  projects,
+  homeId,
+  onRecordsChanged,
+}) {
+  // Tracks which project or task is currently saving, so its
+  // control can disable itself while the request is in flight.
+  const [savingKey, setSavingKey] =
+    useState(null);
+
+  // Keyed by project id so each card can show its own error.
+  const [projectErrors, setProjectErrors] =
+    useState({});
+
+  async function handleProjectStatusChange(
+    project,
+    newStatus
+  ) {
+    if (
+      !homeId ||
+      newStatus === project.status
+    ) {
+      return;
+    }
+
+    const savingKeyForProject = `project:${project.id}`;
+
+    setSavingKey(savingKeyForProject);
+
+    setProjectErrors((current) => ({
+      ...current,
+      [project.id]: "",
+    }));
+
+    try {
+      await api.patch(
+        `${API_URL}/homes/${homeId}/projects/${project.id}`,
+        { status: newStatus }
+      );
+
+      if (onRecordsChanged) {
+        await onRecordsChanged();
+      }
+    } catch (error) {
+      setProjectErrors((current) => ({
+        ...current,
+
+        [project.id]:
+          error.response?.data?.error ||
+          "Could not update this project.",
+      }));
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function handleTaskToggle(
+    project,
+    task
+  ) {
+    if (!homeId) {
+      return;
+    }
+
+    const nextStatus =
+      task.status === "done"
+        ? "todo"
+        : "done";
+
+    const savingKeyForTask = `task:${task.id}`;
+
+    setSavingKey(savingKeyForTask);
+
+    setProjectErrors((current) => ({
+      ...current,
+      [project.id]: "",
+    }));
+
+    try {
+      await api.patch(
+        `${API_URL}/homes/${homeId}/projects/${project.id}/tasks/${task.id}`,
+        { status: nextStatus }
+      );
+
+      if (onRecordsChanged) {
+        await onRecordsChanged();
+      }
+    } catch (error) {
+      setProjectErrors((current) => ({
+        ...current,
+
+        [project.id]:
+          error.response?.data?.error ||
+          "Could not update this task.",
+      }));
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   if (projects.length === 0) {
     return (
       <div className="empty-state dashboard-empty">
@@ -67,7 +190,7 @@ function ProjectsPanel({ projects }) {
                 {formatCurrency(
                   project.estimated_cost_low
                 )}
-                {" â€“ "}
+                {" – "}
                 {formatCurrency(
                   project.estimated_cost_high
                 )}
@@ -115,12 +238,33 @@ function ProjectsPanel({ projects }) {
                         key={
                           task.id
                         }
+                        className="task-row"
                       >
-                        <span>
-                          {
-                            task.title
-                          }
-                        </span>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={
+                              task.status ===
+                              "done"
+                            }
+                            disabled={
+                              savingKey ===
+                              `task:${task.id}`
+                            }
+                            onChange={() =>
+                              handleTaskToggle(
+                                project,
+                                task
+                              )
+                            }
+                          />
+
+                          <span>
+                            {
+                              task.title
+                            }
+                          </span>
+                        </label>
 
                         <small>
                           {formatLabel(
@@ -135,13 +279,35 @@ function ProjectsPanel({ projects }) {
             )}
 
           <div className="record-footer">
-            <span
-              className={`status-badge status-${project.status}`}
-            >
-              {formatLabel(
-                project.status
-              )}
-            </span>
+            <label className="status-select-field">
+              <span>Status</span>
+
+              <select
+                className={`status-select status-${project.status}`}
+                value={project.status}
+                disabled={
+                  savingKey ===
+                  `project:${project.id}`
+                }
+                onChange={(event) =>
+                  handleProjectStatusChange(
+                    project,
+                    event.target.value
+                  )
+                }
+              >
+                {PROJECT_STATUSES.map(
+                  (status) => (
+                    <option
+                      key={status}
+                      value={status}
+                    >
+                      {formatLabel(status)}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
 
             <small>
               {formatDate(
@@ -149,6 +315,14 @@ function ProjectsPanel({ projects }) {
               )}
             </small>
           </div>
+
+          {projectErrors[project.id] && (
+            <p className="record-inline-error">
+              {
+                projectErrors[project.id]
+              }
+            </p>
+          )}
         </article>
       ))}
     </div>

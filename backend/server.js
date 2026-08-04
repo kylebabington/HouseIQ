@@ -3,6 +3,11 @@
 // Loads variables from .env into process.env
 import "dotenv/config";
 
+// randomUUID generates a unique ID for every request, so a
+// single interaction can be traced across logs and error
+// responses even when several requests are in flight at once.
+import { randomUUID } from "crypto";
+
 // Express creates our API server
 import express from "express";
 
@@ -21,8 +26,24 @@ import { createDocumentsRouter } from "./routes/documents.js";
 import { createHomeResourcesRouter } from "./routes/homeResources.js";
 import { createHomesRouter } from "./routes/homes.js";
 import { createProfileRouter } from "./routes/profile.js";
+import { createRecordsRouter } from "./routes/records.js";
 
 const app = express();
+
+// ---------------------------------------------------------
+// REQUEST ID
+// ---------------------------------------------------------
+//
+// Every request gets a unique ID that is echoed back in the
+// X-Request-Id response header and attached to req.requestId so
+// route handlers can include it in error logs. This makes it
+// possible to correlate a specific failed response with the
+// matching server log line.
+app.use((req, res, next) => {
+    req.requestId = randomUUID();
+    res.setHeader("X-Request-Id", req.requestId);
+    next();
+});
 
 app.use(
     cors({
@@ -123,6 +144,11 @@ app.use(
 
 app.use(
     "/api",
+    createRecordsRouter()
+);
+
+app.use(
+    "/api",
     createDocumentsRouter(upload)
 );
 
@@ -190,13 +216,15 @@ app.use((error, req, res, next) => {
     }
 
     console.error(
-        "Unhandled server error:",
+        `Unhandled server error [requestId=${req.requestId}]:`,
         error
     );
 
     return res.status(500).json({
         error:
             "An unexpected server error occurred",
+        requestId:
+            req.requestId,
     });
 });
 

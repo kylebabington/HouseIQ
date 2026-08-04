@@ -10,6 +10,11 @@ import OpenAI from "openai";
 //
 export const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+
+    // Prevent a hung OpenAI request from tying up a request
+    // indefinitely (and, on the agent route, holding an open
+    // database transaction while it waits).
+    timeout: 60000,
 });
 
 

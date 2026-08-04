@@ -6,11 +6,18 @@
 /* --------------------------------------------------------- */
 
 :root {
-  font-family:
-    "Trebuchet MS",
+  --font-display:
+    "Fraunces",
+    Georgia,
+    serif;
+
+  --font-body:
+    "Source Sans 3",
     "Segoe UI",
     system-ui,
     sans-serif;
+
+  font-family: var(--font-body);
 
   color: #17231c;
   background: #e8eee4;
@@ -68,6 +75,16 @@ p {
   margin-top: 0;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+.brand-wordmark {
+  font-family: var(--font-display);
+  color: var(--forest-dark);
+}
+
 
 /* --------------------------------------------------------- */
 /* PAGE SHELL                                                */
@@ -91,22 +108,8 @@ p {
 
 
 /* --------------------------------------------------------- */
-/* HERO                                                      */
+/* BRAND TYPOGRAPHY                                          */
 /* --------------------------------------------------------- */
-
-.hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 2rem;
-  max-width: 900px;
-  margin: 0 auto 2rem;
-  text-align: center;
-}
-
-.hero-copy {
-  min-width: 0;
-}
 
 .eyebrow {
   margin-bottom: 0.5rem;
@@ -117,27 +120,168 @@ p {
   font-size: 0.78rem;
 }
 
+/* Reserved for the logged-out marketing hero in AuthScreens.jsx.
+   The authenticated shell uses .brand-wordmark instead — see
+   APP TOPBAR below. */
 h1 {
   margin-bottom: 0;
   font-size: clamp(3rem, 8vw, 6rem);
   line-height: 0.9;
   letter-spacing: -0.06em;
-  color: var(--forest-dark);
 }
 
-h2,
-h3,
-h4,
-h5 {
-  color: var(--forest-dark);
+
+/* --------------------------------------------------------- */
+/* AUTHENTICATION SCREENS                                    */
+/* --------------------------------------------------------- */
+/*
+  AuthLoadingScreen, AuthErrorScreen, and LoginScreen all share
+  this centered, brand-forward card. This is the only place the
+  large marketing hero (h1 "HouseIQ" + tagline) still appears —
+  the authenticated shell keeps a compact wordmark instead.
+*/
+
+.auth-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 2rem;
+
+  background:
+    radial-gradient(circle at top left,
+      rgba(126, 169, 129, 0.4),
+      transparent 32%),
+    radial-gradient(circle at bottom right,
+      rgba(204, 181, 132, 0.24),
+      transparent 32%),
+    linear-gradient(135deg,
+      #eef3ea,
+      #dce6d7);
 }
 
-.hero-text {
-  max-width: 700px;
+.auth-card {
+  width: 100%;
+  max-width: 560px;
+
+  padding: 3rem 2.75rem;
+  text-align: center;
+
+  background: rgba(255, 255, 255, 0.85);
+
+  border:
+    1px solid var(--border);
+
+  border-radius: 32px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.auth-introduction {
+  max-width: 440px;
   margin: 1rem auto 0;
+
   color: #465c49;
-  font-size: 1.15rem;
+  font-size: 1.08rem;
   line-height: 1.6;
+}
+
+.auth-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+
+  margin-top: 1.85rem;
+}
+
+.auth-actions button {
+  min-width: 160px;
+}
+
+.auth-card .error-message {
+  text-align: left;
+}
+
+
+/* --------------------------------------------------------- */
+/* APP TOPBAR (AUTHENTICATED SHELL)                          */
+/* --------------------------------------------------------- */
+/*
+  Compact chrome shown once a user is signed in. Replaces the
+  full marketing hero so the first viewport is the home
+  workspace, not another pitch for HouseIQ.
+*/
+
+.app-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+
+  max-width: 1500px;
+  margin: 0 auto 1.5rem;
+}
+
+.brand-lockup {
+  min-width: 0;
+}
+
+.topbar-eyebrow {
+  margin: 0 0 0.2rem;
+
+  color: #4e6f53;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+}
+
+.brand-wordmark {
+  margin: 0;
+
+  font-size: 1.65rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.user-avatar {
+  width: 42px;
+  height: 42px;
+
+  border-radius: 50%;
+  object-fit: cover;
+
+  border:
+    2px solid var(--white);
+
+  box-shadow:
+    0 4px 12px rgba(34, 56, 38, 0.18);
+}
+
+.user-details {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  text-align: right;
+}
+
+.user-details strong {
+  color: var(--forest-dark);
+  font-size: 0.9rem;
+}
+
+.user-details span {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 
@@ -323,14 +467,42 @@ button:disabled {
   margin-bottom: 1.25rem;
 }
 
-.selected-home-header h2 {
-  margin-bottom: 0.35rem;
+.selected-home-header h1 {
+  margin-bottom: 0.5rem;
   font-size: 2rem;
 }
 
 .selected-home-header p:last-child {
   margin-bottom: 0;
   color: var(--muted);
+}
+
+.onboarding-badge {
+  display: inline-block;
+  white-space: nowrap;
+
+  margin-bottom: 0.5rem;
+  padding: 0.32rem 0.75rem;
+
+  border-radius: 999px;
+
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.onboarding-not_started {
+  background: #f6d8d2;
+  color: #782f26;
+}
+
+.onboarding-in_progress {
+  background: #fff0bf;
+  color: #745b0c;
+}
+
+.onboarding-completed {
+  background: #d7ead5;
+  color: #285932;
 }
 
 
@@ -350,6 +522,23 @@ button:disabled {
 .section-heading h3 {
   margin-bottom: 0;
   font-size: 1.45rem;
+}
+
+
+/* --------------------------------------------------------- */
+/* AGENT + DOCUMENT UPLOAD ROW                               */
+/* --------------------------------------------------------- */
+/*
+  Keeps the two demo actions HouseIQ hinges on — asking a
+  question and uploading a document — side by side in the
+  first viewport for a selected home.
+*/
+
+.agent-upload-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
 }
 
 
@@ -472,6 +661,228 @@ button:disabled {
 .confidence-low {
   background: #f8d9d4;
   color: #812f26;
+}
+
+
+/* --------------------------------------------------------- */
+/* DEMO CTA ROW                                              */
+/* --------------------------------------------------------- */
+/*
+  Compact call-to-action shown under the selected-home header
+  pointing new users at the two actions the demo hinges on:
+  uploading a document and asking HouseIQ a question.
+*/
+
+.demo-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+
+  margin-bottom: 1.25rem;
+  padding: 0.9rem 1.15rem;
+
+  background: var(--sage-light);
+
+  border:
+    1px solid rgba(61, 92, 66, 0.18);
+
+  border-radius: 18px;
+}
+
+.demo-cta-copy {
+  margin: 0;
+  max-width: 560px;
+
+  color: var(--forest-dark);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.demo-cta-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+
+/* --------------------------------------------------------- */
+/* CONVERSATION TURN HISTORY                                 */
+/* --------------------------------------------------------- */
+/*
+  Each turn pairs the homeowner's question with HouseIQ's
+  structured response, rendered oldest-first so the panel reads
+  like a chat transcript.
+*/
+
+.turn-list {
+  display: grid;
+  gap: 1.1rem;
+
+  margin-top: 1.25rem;
+}
+
+.turn-item {
+  display: grid;
+  gap: 0.6rem;
+
+  animation: fade-slide-in 320ms ease both;
+}
+
+.turn-question {
+  justify-self: end;
+  max-width: 85%;
+
+  padding: 0.75rem 1rem;
+
+  background: var(--sage-light);
+  border-radius: 16px 16px 4px 16px;
+}
+
+.turn-question-label {
+  display: block;
+  margin-bottom: 0.2rem;
+
+  color: #4e6f53;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.turn-question p {
+  margin: 0;
+  color: var(--forest-dark);
+  line-height: 1.5;
+}
+
+.turn-response {
+  padding: 1.05rem;
+
+  border:
+    1px solid rgba(49, 84, 57, 0.18);
+
+  border-radius: 4px 16px 16px 16px;
+  background: white;
+}
+
+.turn-response-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+
+  margin-bottom: 0.75rem;
+}
+
+.turn-response-label {
+  color: #4e6f53;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.turn-context-used {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+
+/* --------------------------------------------------------- */
+/* ACTION CHIPS                                              */
+/* --------------------------------------------------------- */
+
+.action-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+
+  margin-top: 0.85rem;
+}
+
+.action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  padding: 0.45rem 0.8rem;
+
+  background: #f7faf5;
+  color: var(--forest-dark);
+
+  border:
+    1px solid var(--border);
+  border-radius: 999px;
+
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.action-chip:hover:not(:disabled) {
+  background: #dcebd7;
+  transform: none;
+  box-shadow: none;
+}
+
+.action-chip:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.action-chip-icon {
+  display: grid;
+  place-items: center;
+
+  width: 18px;
+  height: 18px;
+
+  border-radius: 50%;
+
+  background: #d7ead5;
+  color: #285932;
+
+  font-size: 0.65rem;
+  font-weight: 900;
+}
+
+
+/* --------------------------------------------------------- */
+/* CONTEXT USED                                              */
+/* --------------------------------------------------------- */
+
+.context-used-section {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+
+  border:
+    1px solid rgba(49, 84, 57, 0.14);
+
+  border-radius: 14px;
+  background: #f4f8f2;
+}
+
+.context-used-section h4 {
+  margin-bottom: 0.35rem;
+}
+
+.context-used-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.context-used-list {
+  margin: 0.55rem 0 0;
+  padding-left: 1.15rem;
+  color: var(--forest-dark);
+  font-size: 0.9rem;
+}
+
+.context-used-list li {
+  margin-bottom: 0.25rem;
 }
 
 
@@ -698,6 +1109,8 @@ button:disabled {
 
 .tab-content {
   margin-top: 1rem;
+
+  animation: fade-in 220ms ease both;
 }
 
 
@@ -973,6 +1386,119 @@ button:disabled {
 
 
 /* --------------------------------------------------------- */
+/* RECORD ACT LOOP (INLINE EDITING)                          */
+/* --------------------------------------------------------- */
+/*
+  Shared by IssuesPanel, ProjectsPanel, AssetsPanel, and
+  MemoriesPanel for status selects, edit forms, and inline
+  errors created by the human governance ("ACT loop") flow.
+*/
+
+.status-select-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-select-field>span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-select {
+  padding: 0.4rem 0.7rem;
+
+  border:
+    1px solid var(--border);
+  border-radius: 999px;
+
+  background: var(--cream);
+  color: var(--ink);
+
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+
+  margin-top: 0.85rem;
+}
+
+.small-button {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.record-edit-form {
+  display: grid;
+  gap: 0.6rem;
+
+  margin-top: 0.85rem;
+}
+
+.record-edit-form label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.record-edit-form label>span {
+  color: #4c6051;
+
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.record-edit-form input,
+.record-edit-form textarea {
+  padding: 0.6rem 0.75rem;
+}
+
+.record-edit-form textarea {
+  min-height: 80px;
+}
+
+.record-inline-error {
+  margin-top: 0.65rem;
+  padding: 0.6rem 0.75rem;
+
+  background: #fff0ed;
+
+  border:
+    1px solid rgba(168, 62, 48, 0.22);
+  border-radius: 12px;
+
+  color: #762e25;
+  font-size: 0.8rem;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+
+  list-style: none;
+}
+
+.task-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  cursor: pointer;
+}
+
+.task-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+
+/* --------------------------------------------------------- */
 /* MANUAL MEMORY PANEL                                       */
 /* --------------------------------------------------------- */
 
@@ -1061,7 +1587,6 @@ button:disabled {
 /* --------------------------------------------------------- */
 
 .document-upload-section {
-  margin-top: 1.5rem;
   padding: 1.25rem;
 
   background:
@@ -1412,18 +1937,68 @@ button:disabled {
 }
 
 @media (max-width: 700px) {
-  .hero {
+  .app-topbar {
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .user-menu {
     width: 100%;
     align-items: flex-start;
-    flex-wrap: wrap;
   }
 
   .user-details {
     flex: 1;
+    text-align: left;
+  }
+}
+
+
+/* --------------------------------------------------------- */
+/* MOTION                                                    */
+/* --------------------------------------------------------- */
+/*
+  A small, intentional set of animations: conversation turns
+  and the agent/upload row ease in, and dashboard tab content
+  fades on switch (the tab-content element is remounted with a
+  key={activeTab} in App.jsx so the animation replays).
+*/
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.panel-enter {
+  animation: fade-slide-in 360ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -1439,6 +2014,10 @@ button:disabled {
 
   .dashboard-summary {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .agent-upload-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1469,6 +2048,15 @@ button:disabled {
 
   .document-form-fields {
     grid-template-columns: 1fr;
+  }
+
+  .demo-cta-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .turn-question {
+    max-width: 100%;
   }
 }
 

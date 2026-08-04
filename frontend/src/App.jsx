@@ -28,7 +28,33 @@ import AssetsPanel from "./components/dashboard/AssetsPanel.jsx";
 import MemoriesPanel from "./components/dashboard/MemoriesPanel.jsx";
 import DocumentsPanel from "./components/dashboard/DocumentsPanel.jsx";
 
+import { formatLabel } from "./utils/formatters.js";
+
 import "./index.css";
+
+
+// ---------------------------------------------------------
+// ONBOARDING STATUS BADGE COPY
+// ---------------------------------------------------------
+//
+// Shown next to the selected home's name so a homeowner can
+// see, without clicking into the Profile tab, whether HouseIQ
+// still needs the initial onboarding questions answered.
+//
+const ONBOARDING_STATUS_META = {
+  not_started: {
+    className: "onboarding-not_started",
+    label: "Onboarding not started",
+  },
+  in_progress: {
+    className: "onboarding-in_progress",
+    label: "Onboarding in progress",
+  },
+  completed: {
+    className: "onboarding-completed",
+    label: "Onboarding complete",
+  },
+};
 
 
 // ---------------------------------------------------------
@@ -111,11 +137,13 @@ function App() {
   //
   const {
     homes,
+    homesError,
     selectedHome,
     homeForm,
     setHomeForm,
     selectHome,
     createHome,
+    createHomeError,
 
     issues,
     projects,
@@ -157,6 +185,52 @@ function App() {
 
 
   // -----------------------------------------------------
+  // REFRESH RECORDS AFTER AN EDIT OR DELETE
+  // -----------------------------------------------------
+  //
+  // Issues, projects, tasks, assets, and memories panels
+  // call this after a PATCH or DELETE succeeds so the
+  // dashboard reflects the human's correction immediately.
+  //
+  async function refreshDashboardForSelectedHome() {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    await refreshHomeDashboard(
+      selectedHome.id
+    );
+  }
+
+
+  // -----------------------------------------------------
+  // SCROLL TO (AND OPTIONALLY FOCUS) A DEMO SECTION
+  // -----------------------------------------------------
+  //
+  // Used by the compact demo CTA row so a new user can jump
+  // straight to "upload a document" or "ask HouseIQ" without
+  // hunting for those sections on a long page.
+  //
+  function scrollToSection(elementId, { focus } = {}) {
+    const element =
+      document.getElementById(elementId);
+
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    if (focus) {
+      element.focus({ preventScroll: true });
+    }
+  }
+
+
+  // -----------------------------------------------------
   // RENDER STRUCTURED HOME PROFILE
   // -----------------------------------------------------
 
@@ -195,6 +269,10 @@ function App() {
         return (
           <ProjectsPanel
             projects={projects}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
 
@@ -202,6 +280,10 @@ function App() {
         return (
           <AssetsPanel
             assets={assets}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
 
@@ -209,6 +291,10 @@ function App() {
         return (
           <MemoriesPanel
             memories={memories}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
 
@@ -225,6 +311,10 @@ function App() {
         return (
           <IssuesPanel
             issues={issues}
+            homeId={selectedHome?.id}
+            onRecordsChanged={
+              refreshDashboardForSelectedHome
+            }
           />
         );
     }
@@ -255,17 +345,22 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">
+      {/* -------------------------------------- */}
+      {/* COMPACT AUTHENTICATED TOP CHROME       */}
+      {/* -------------------------------------- */}
+      {/* The full marketing hero only appears on the
+          logged-out screens (see AuthScreens.jsx). Once a
+          homeowner is signed in, the first viewport should be
+          their home workspace, not another pitch for HouseIQ. */}
+
+      <header className="app-topbar">
+        <div className="brand-lockup">
+          <p className="topbar-eyebrow">
             Agentic home memory
           </p>
 
-          <h1>HouseIQ</h1>
-
-          <p className="hero-text">
-            Your home remembers everything.
-            HouseIQ makes sure you do too.
+          <p className="brand-wordmark">
+            HouseIQ
           </p>
         </div>
 
@@ -308,7 +403,7 @@ function App() {
             Log out
           </button>
         </div>
-      </section>
+      </header>
 
       <section className="layout">
         {/* -------------------------------------- */}
@@ -317,6 +412,16 @@ function App() {
 
         <aside className="panel sidebar">
           <h2>Your Homes</h2>
+
+          {homesError && (
+            <div className="error-message">
+              <strong>
+                Could not load homes
+              </strong>
+
+              <p>{homesError}</p>
+            </div>
+          )}
 
           <form
             onSubmit={createHome}
@@ -361,6 +466,12 @@ function App() {
               }
               placeholder="General notes about this home"
             />
+
+            {createHomeError && (
+              <p className="record-inline-error">
+                {createHomeError}
+              </p>
+            )}
 
             <button type="submit">
               Create Home
@@ -413,11 +524,28 @@ function App() {
                     Current home
                   </p>
 
-                  <h2>
+                  <h1>
                     {
                       selectedHome.name
                     }
-                  </h2>
+                  </h1>
+
+                  {homeProfile && (
+                    <span
+                      className={`onboarding-badge ${ONBOARDING_STATUS_META[
+                        homeProfile.onboardingStatus
+                      ]?.className ||
+                        "onboarding-not_started"
+                        }`}
+                    >
+                      {ONBOARDING_STATUS_META[
+                        homeProfile.onboardingStatus
+                      ]?.label ||
+                        formatLabel(
+                          homeProfile.onboardingStatus
+                        )}
+                    </span>
+                  )}
 
                   {selectedHome.notes && (
                     <p>
@@ -457,56 +585,102 @@ function App() {
               {/* HOUSEIQ CONVERSATION             */}
               {/* -------------------------------- */}
 
-              <AgentPanel
+              {/* Always shown once a home is selected — the
+                  quickest path to the two actions HouseIQ's demo
+                  hinges on: uploading a document and asking a
+                  question. */}
+              <section className="demo-cta-row">
+                <p className="demo-cta-copy">
+                  Upload an inspection report,
+                  then ask what to do before
+                  winter — HouseIQ will use your
+                  profile and documents.
+                </p>
+
+                <div className="demo-cta-buttons">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      scrollToSection(
+                        "houseiq-document-upload-section"
+                      )
+                    }
+                  >
+                    Upload a document
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      scrollToSection(
+                        "houseiq-agent-textarea",
+                        { focus: true }
+                      )
+                    }
+                  >
+                    Ask HouseIQ
+                  </button>
+                </div>
+              </section>
+
+              {/* -------------------------------- */}
+              {/* AGENT + DOCUMENT UPLOAD          */}
+              {/* -------------------------------- */}
+              {/* Side by side so the two demo actions HouseIQ
+                  hinges on both sit in the first viewport. */}
+
+              <div
                 key={
                   selectedHome?.id ||
                   "no-home"
                 }
-                selectedHome={selectedHome}
-                onRecordsChanged={() =>
-                  refreshHomeDashboard(
-                    selectedHome.id
-                  )
-                }
-              />
+                className="agent-upload-row panel-enter"
+              >
+                <AgentPanel
+                  selectedHome={selectedHome}
+                  onRecordsChanged={() =>
+                    refreshHomeDashboard(
+                      selectedHome.id
+                    )
+                  }
+                  onNavigateTab={setActiveTab}
+                />
 
-
-              {/* -------------------------------- */}
-              {/* DOCUMENT UPLOAD                   */}
-              {/* -------------------------------- */}
-
-              <DocumentUploadPanel
-                selectedDocumentType={
-                  selectedDocumentType
-                }
-                setSelectedDocumentType={
-                  setSelectedDocumentType
-                }
-                selectedDocumentFile={
-                  selectedDocumentFile
-                }
-                setSelectedDocumentFile={
-                  setSelectedDocumentFile
-                }
-                isUploadingDocument={
-                  isUploadingDocument
-                }
-                documentUploadError={
-                  documentUploadError
-                }
-                setDocumentUploadError={
-                  setDocumentUploadError
-                }
-                documentUploadResult={
-                  documentUploadResult
-                }
-                setDocumentUploadResult={
-                  setDocumentUploadResult
-                }
-                uploadDocument={
-                  uploadDocument
-                }
-              />
+                <DocumentUploadPanel
+                  selectedDocumentType={
+                    selectedDocumentType
+                  }
+                  setSelectedDocumentType={
+                    setSelectedDocumentType
+                  }
+                  selectedDocumentFile={
+                    selectedDocumentFile
+                  }
+                  setSelectedDocumentFile={
+                    setSelectedDocumentFile
+                  }
+                  isUploadingDocument={
+                    isUploadingDocument
+                  }
+                  documentUploadError={
+                    documentUploadError
+                  }
+                  setDocumentUploadError={
+                    setDocumentUploadError
+                  }
+                  documentUploadResult={
+                    documentUploadResult
+                  }
+                  setDocumentUploadResult={
+                    setDocumentUploadResult
+                  }
+                  uploadDocument={
+                    uploadDocument
+                  }
+                />
+              </div>
 
 
               {/* -------------------------------- */}
@@ -572,11 +746,18 @@ function App() {
 
                 <nav
                   className="tab-list"
+                  role="tablist"
                   aria-label="Home records"
                 >
 
                   <button
                     type="button"
+                    id="tab-profile"
+                    role="tab"
+                    aria-selected={
+                      activeTab === "profile"
+                    }
+                    aria-controls="dashboard-tabpanel"
                     className={
                       activeTab === "profile"
                         ? "dashboard-tab active"
@@ -593,6 +774,12 @@ function App() {
 
                   <button
                     type="button"
+                    id="tab-issues"
+                    role="tab"
+                    aria-selected={
+                      activeTab === "issues"
+                    }
+                    aria-controls="dashboard-tabpanel"
                     className={
                       activeTab ===
                         "issues"
@@ -615,6 +802,12 @@ function App() {
 
                   <button
                     type="button"
+                    id="tab-projects"
+                    role="tab"
+                    aria-selected={
+                      activeTab === "projects"
+                    }
+                    aria-controls="dashboard-tabpanel"
                     className={
                       activeTab ===
                         "projects"
@@ -637,6 +830,12 @@ function App() {
 
                   <button
                     type="button"
+                    id="tab-assets"
+                    role="tab"
+                    aria-selected={
+                      activeTab === "assets"
+                    }
+                    aria-controls="dashboard-tabpanel"
                     className={
                       activeTab ===
                         "assets"
@@ -659,6 +858,12 @@ function App() {
 
                   <button
                     type="button"
+                    id="tab-memories"
+                    role="tab"
+                    aria-selected={
+                      activeTab === "memories"
+                    }
+                    aria-controls="dashboard-tabpanel"
                     className={
                       activeTab ===
                         "memories"
@@ -681,6 +886,12 @@ function App() {
 
                   <button
                     type="button"
+                    id="tab-documents"
+                    role="tab"
+                    aria-selected={
+                      activeTab === "documents"
+                    }
+                    aria-controls="dashboard-tabpanel"
                     className={
                       activeTab === "documents"
                         ? "tab-button active"
@@ -713,7 +924,13 @@ function App() {
                   </div>
                 )}
 
-                <div className="tab-content">
+                <div
+                  key={activeTab}
+                  id="dashboard-tabpanel"
+                  role="tabpanel"
+                  aria-labelledby={`tab-${activeTab}`}
+                  className="tab-content"
+                >
                   {isLoadingDashboard ? (
                     <div className="loading-state">
                       Loading home
@@ -730,15 +947,17 @@ function App() {
               {/* MANUAL TESTING PANEL             */}
               {/* -------------------------------- */}
 
-              <ManualMemoryPanel
-                memoryForm={memoryForm}
-                setMemoryForm={
-                  setMemoryForm
-                }
-                createMemory={
-                  createMemory
-                }
-              />
+              {import.meta.env.DEV && (
+                <ManualMemoryPanel
+                  memoryForm={memoryForm}
+                  setMemoryForm={
+                    setMemoryForm
+                  }
+                  createMemory={
+                    createMemory
+                  }
+                />
+              )}
             </>
           ) : (
             <div className="empty-state large">

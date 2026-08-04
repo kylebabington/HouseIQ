@@ -12,15 +12,23 @@ const __dirname = path.dirname(
     fileURLToPath(import.meta.url)
 );
 
+// CockroachDB Cloud commonly uses SSL.
+//
+// `rejectUnauthorized: false` keeps the pg client from rejecting
+// the connection because of local certificate-chain quirks during
+// development, but it must never be used in production. In
+// production we require normal SSL certificate verification.
+const isProduction =
+    process.env.NODE_ENV === "production";
+
+const sslConfig = isProduction
+    ? { rejectUnauthorized: true }
+    : { rejectUnauthorized: false };
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
 
-    // CockroachDB Cloud commonly uses SSL.
-    // This keeps the pg client from rejecting the connection
-    // because of local certificate-chain quirks during development.
-    ssl: {
-        rejectUnauthorized: false,
-    },
+    ssl: sslConfig,
 });
 
 async function runSchema() {

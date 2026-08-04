@@ -1,0 +1,114 @@
+# .github/workflows/frontend-build.yml
+
+# The name shown in the GitHub Actions interface.
+name: Frontend Build
+
+
+# ---------------------------------------------------------
+# WHEN THIS WORKFLOW RUNS
+# ---------------------------------------------------------
+#
+# Run the build when:
+#
+# 1. Code is pushed directly to main.
+# 2. A pull request targeting main is opened or updated.
+#
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+
+# ---------------------------------------------------------
+# MINIMUM GITHUB PERMISSIONS
+# ---------------------------------------------------------
+#
+# The build workflow only needs permission to read repository
+# contents so it can check out the code.
+#
+permissions:
+  contents: read
+
+
+# ---------------------------------------------------------
+# PREVENT DUPLICATE RUNS
+# ---------------------------------------------------------
+#
+# If several commits are pushed quickly to the same branch,
+# cancel the older run and build only the newest commit.
+#
+concurrency:
+  group: frontend-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  build-frontend:
+    # This is the job name shown inside the workflow run.
+    name: Frontend Production Build
+
+    # GitHub creates a temporary Linux machine for this job.
+    runs-on: ubuntu-latest
+
+    # These defaults apply to every `run` command below.
+    #
+    # HouseIQ's frontend package.json is inside frontend/, so
+    # commands such as npm ci and npm run build must run there.
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # -----------------------------------------------------
+      # 1. CHECK OUT THE REPOSITORY
+      # -----------------------------------------------------
+      #
+      # Without this step, the runner has no HouseIQ files.
+      #
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+
+      # -----------------------------------------------------
+      # 2. INSTALL NODE
+      # -----------------------------------------------------
+      #
+      # Use Node 20 because the current frontend dependencies
+      # require Node 20 or newer.
+      #
+      # npm caching makes later runs faster by reusing downloaded
+      # packages. The lockfile remains the source of truth.
+      #
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+
+      # -----------------------------------------------------
+      # 3. INSTALL EXACT DEPENDENCIES
+      # -----------------------------------------------------
+      #
+      # npm ci installs exactly the package versions represented
+      # by package-lock.json and fails if the package files disagree.
+      #
+      - name: Install frontend dependencies
+        run: npm ci
+
+
+      # -----------------------------------------------------
+      # 4. BUILD THE PRODUCTION BUNDLE
+      # -----------------------------------------------------
+      #
+      # package.json maps npm run build to:
+      #
+      # vite build
+      #
+      - name: Build frontend
+        run: npm run build

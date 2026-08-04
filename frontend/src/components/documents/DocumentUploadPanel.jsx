@@ -27,7 +27,10 @@ function DocumentUploadPanel({
   uploadDocument,
 }) {
   return (
-    <section className="document-upload-section">
+    <section
+      id="houseiq-document-upload-section"
+      className="document-upload-section"
+    >
       <div className="section-heading">
         <div>
           <p className="eyebrow">
@@ -304,7 +307,7 @@ function DocumentUploadPanel({
                       className="action-item"
                     >
                       <span className="action-icon">
-                        âœ“
+                        ✓
                       </span>
 
                       <div>

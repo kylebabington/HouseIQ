@@ -20,6 +20,10 @@ import {
 } from "../middleware/ownership.js";
 
 import {
+    uploadRateLimit,
+} from "../middleware/rateLimit.js";
+
+import {
     createAssetRecord,
     createIssueRecord,
     createMemoryRecord,
@@ -361,6 +365,11 @@ export function createDocumentsRouter(upload) {
 
         // Confirm who is making the request.
         requireAuth,
+
+        // requireAuth runs first so req.auth.payload.sub is
+        // available for uploadRateLimit to key the limit on the
+        // authenticated user rather than only their IP address.
+        uploadRateLimit,
 
         // Confirm that this home belongs to that user before
         // accepting and buffering the uploaded file.
@@ -904,7 +913,7 @@ export function createDocumentsRouter(upload) {
 
 
                 console.error(
-                    "Document upload failed:",
+                    `Document upload failed [requestId=${req.requestId}]:`,
                     error
                 );
 
@@ -941,6 +950,9 @@ export function createDocumentsRouter(upload) {
                             : {
                                 error:
                                     "Document could not be processed",
+
+                                requestId:
+                                    req.requestId,
                             }
                     );
             } finally {
