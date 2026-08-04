@@ -178,6 +178,36 @@ function useHomeDashboard({
     setDocumentUploadResult,
   ] = useState(null);
 
+  const [documentOpenError, setDocumentOpenError] =
+    useState("");
+
+  const [needsItems, setNeedsItems] = useState([]);
+  const [isLoadingNeeds, setIsLoadingNeeds] =
+    useState(false);
+  const [needsError, setNeedsError] = useState("");
+
+  const [agentRuns, setAgentRuns] = useState([]);
+  const [isLoadingAgentRuns, setIsLoadingAgentRuns] =
+    useState(false);
+  const [agentRunsError, setAgentRunsError] =
+    useState("");
+
+  const [homeMembers, setHomeMembers] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] =
+    useState("");
+  const [isInviting, setIsInviting] = useState(false);
+
+  const [onboardingGateDismissed, setOnboardingGateDismissed] =
+    useState(false);
+  const [highlightRecord, setHighlightRecord] =
+    useState(null);
+
+  const [memoryFormError, setMemoryFormError] =
+    useState("");
+
 
   // -----------------------------------------------------
   // MANUAL MEMORY TESTING STATE
@@ -264,12 +294,24 @@ function useHomeDashboard({
   function resetHomeScopedUi() {
     setDocumentUploadResult(null);
     setDocumentUploadError("");
+    setDocumentOpenError("");
     setSelectedDocumentFile(null);
 
     setHomeProfile(null);
     setHomeProfileError("");
 
-    // Start each home on its profile.
+    setNeedsItems([]);
+    setNeedsError("");
+    setAgentRuns([]);
+    setAgentRunsError("");
+    setHomeMembers([]);
+    setInviteError("");
+    setInviteSuccess("");
+    setOnboardingGateDismissed(false);
+    setHighlightRecord(null);
+    setMemoryFormError("");
+
+    // Start each home on its profile / gate.
     setActiveTab("profile");
   }
 
@@ -302,13 +344,26 @@ function useHomeDashboard({
     try {
       setHomesError("");
 
+      // Redeem any pending email invites before listing.
+      try {
+        await api.post(
+          `${API_URL}/homes/members/redeem`
+        );
+      } catch (redeemError) {
+        // Non-fatal: token may lack email claim.
+        console.warn(
+          "Invite redeem skipped:",
+          redeemError?.response?.data?.error ||
+            redeemError.message
+        );
+      }
+
       const response = await api.get(
         `${API_URL}/homes`
       );
 
       setHomes(response.data);
 
-      // Automatically select the newest home.
       if (
         response.data.length > 0 &&
         !selectedHome
@@ -342,25 +397,18 @@ function useHomeDashboard({
     try {
       setIsLoadingDashboard(true);
       setDashboardError("");
+      setIsLoadingNeeds(true);
+      setIsLoadingAgentRuns(true);
 
-      // Promise.all runs all five requests at the same time.
-      //
-      // This is faster than:
-      //
-      // await issues
-      // await projects
-      // await assets
-      // await memories
-      // await documents
-      //
-      // because the browser does not wait for one request
-      // before starting the next.
       const [
         issuesResponse,
         projectsResponse,
         assetsResponse,
         memoriesResponse,
         documentsResponse,
+        needsResponse,
+        agentRunsResponse,
+        membersResponse,
       ] = await Promise.all([
         api.get(
           `${API_URL}/homes/${homeId}/issues`
@@ -381,6 +429,18 @@ function useHomeDashboard({
         api.get(
           `${API_URL}/homes/${homeId}/documents`
         ),
+
+        api.get(
+          `${API_URL}/homes/${homeId}/needs`
+        ),
+
+        api.get(
+          `${API_URL}/homes/${homeId}/agent-runs`
+        ),
+
+        api.get(
+          `${API_URL}/homes/${homeId}/members`
+        ),
       ]);
 
       setIssues(issuesResponse.data);
@@ -388,6 +448,11 @@ function useHomeDashboard({
       setAssets(assetsResponse.data);
       setMemories(memoriesResponse.data);
       setDocuments(documentsResponse.data);
+      setNeedsItems(needsResponse.data?.items || []);
+      setNeedsError("");
+      setAgentRuns(agentRunsResponse.data || []);
+      setAgentRunsError("");
+      setHomeMembers(membersResponse.data || []);
     } catch (error) {
       console.error(
         "Error refreshing dashboard:",
@@ -399,8 +464,18 @@ function useHomeDashboard({
         error.response?.data?.error ||
         "Could not load the home dashboard."
       );
+      setNeedsError(
+        error.response?.data?.error ||
+        "Could not load priorities."
+      );
+      setAgentRunsError(
+        error.response?.data?.error ||
+        "Could not load advice history."
+      );
     } finally {
       setIsLoadingDashboard(false);
+      setIsLoadingNeeds(false);
+      setIsLoadingAgentRuns(false);
     }
   }
 
@@ -550,9 +625,8 @@ function useHomeDashboard({
   async function uploadDocument(event) {
     event.preventDefault();
 
-    // A document must belong to a home.
     if (!selectedHome) {
-      alert(
+      setDocumentUploadError(
         "Create or select a home before uploading a document."
       );
 
@@ -562,16 +636,19 @@ function useHomeDashboard({
     // The user must choose a file first.
     if (!selectedDocumentFile) {
       setDocumentUploadError(
-        "Choose a PDF or text file before uploading."
+        "Choose a PDF, text file, or photo before uploading."
       );
 
       return;
     }
 
-    // The backend currently accepts only PDF and plain text.
+    // The backend accepts PDF, plain text, and common images.
     const allowedMimeTypes = [
       "application/pdf",
       "text/plain",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
     ];
 
     if (
@@ -580,7 +657,7 @@ function useHomeDashboard({
       )
     ) {
       setDocumentUploadError(
-        "HouseIQ currently supports only PDF and plain-text files."
+        "HouseIQ supports PDF, plain-text, JPEG, PNG, and WebP files."
       );
 
       return;
@@ -718,13 +795,115 @@ function useHomeDashboard({
         error
       );
 
-      alert(
+      setDocumentOpenError(
         error.response?.data?.details ||
         error.response?.data?.error ||
         error.message ||
         "The original document could not be opened."
       );
     }
+  }
+
+  async function openDocumentById(documentId) {
+    const match = documents.find(
+      (doc) => doc.id === documentId
+    );
+
+    if (match) {
+      return openOriginalDocument(match);
+    }
+
+    setDocumentOpenError(
+      "That source document is no longer available."
+    );
+  }
+
+  async function deleteDocument(documentRecord) {
+    if (!documentRecord?.id) {
+      return;
+    }
+
+    await api.delete(
+      `${API_URL}/documents/${documentRecord.id}`
+    );
+
+    if (selectedHome?.id) {
+      await refreshHomeDashboard(selectedHome.id);
+    }
+  }
+
+  async function inviteHomeMember(event) {
+    event.preventDefault();
+
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    setIsInviting(true);
+    setInviteError("");
+    setInviteSuccess("");
+
+    try {
+      await api.post(
+        `${API_URL}/homes/${selectedHome.id}/members`,
+        {
+          invitedEmail: inviteEmail.trim(),
+          role: inviteRole,
+        }
+      );
+
+      setInviteSuccess(
+        `Invite saved for ${inviteEmail.trim()}.`
+      );
+      setInviteEmail("");
+
+      const membersResponse = await api.get(
+        `${API_URL}/homes/${selectedHome.id}/members`
+      );
+      setHomeMembers(membersResponse.data || []);
+    } catch (error) {
+      setInviteError(
+        error.response?.data?.error ||
+          "Could not invite this person."
+      );
+    } finally {
+      setIsInviting(false);
+    }
+  }
+
+  async function removeHomeMember(memberAuth0Id) {
+    if (!selectedHome?.id || !memberAuth0Id) {
+      return;
+    }
+
+    try {
+      await api.delete(
+        `${API_URL}/homes/${selectedHome.id}/members/${encodeURIComponent(memberAuth0Id)}`
+      );
+
+      const membersResponse = await api.get(
+        `${API_URL}/homes/${selectedHome.id}/members`
+      );
+      setHomeMembers(membersResponse.data || []);
+    } catch (error) {
+      setInviteError(
+        error.response?.data?.error ||
+          "Could not remove this member."
+      );
+    }
+  }
+
+  async function deleteHome() {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    await api.delete(
+      `${API_URL}/homes/${selectedHome.id}`
+    );
+
+    setSelectedHome(null);
+    await fetchHomes();
   }
 
 
@@ -736,18 +915,20 @@ function useHomeDashboard({
     event.preventDefault();
 
     if (!selectedHome) {
-      alert(
+      setMemoryFormError(
         "Create or select a home first."
       );
       return;
     }
 
     if (!memoryForm.content.trim()) {
-      alert(
+      setMemoryFormError(
         "Memory content is required."
       );
       return;
     }
+
+    setMemoryFormError("");
 
     try {
       await api.post(
@@ -770,7 +951,6 @@ function useHomeDashboard({
         content: "",
       });
 
-      // Refresh so the new memory appears in the tab.
       await refreshHomeDashboard(
         selectedHome.id
       );
@@ -782,12 +962,43 @@ function useHomeDashboard({
         error
       );
 
-      alert(
+      setMemoryFormError(
         error.response?.data?.error ||
         "Could not save the memory."
       );
     }
   }
+
+
+  // -----------------------------------------------------
+  // ASK / ONBOARDING GATE HELPERS
+  // -----------------------------------------------------
+
+  const onboardingStatus =
+    homeProfile?.onboardingStatus ||
+    "not_started";
+
+  const askUnlocked = Boolean(
+    homeProfile?.propertyType ||
+      homeProfile?.heatingType ||
+      homeProfile?.coolingType ||
+      selectedHome?.year_built ||
+      onboardingStatus === "completed"
+  );
+
+  const askLockReason = askUnlocked
+    ? ""
+    : "add property type, heating/cooling, or year built";
+
+  const showOnboardingGate =
+    Boolean(selectedHome) &&
+    onboardingStatus !== "completed" &&
+    !onboardingGateDismissed;
+
+  const isHomeOwner =
+    !selectedHome?.member_role ||
+    selectedHome.member_role === "owner" ||
+    selectedHome.memberRole === "owner";
 
 
   // -----------------------------------------------------
@@ -804,6 +1015,8 @@ function useHomeDashboard({
     selectHome,
     createHome,
     createHomeError,
+    deleteHome,
+    isHomeOwner,
 
     // Dashboard records
     issues,
@@ -825,6 +1038,36 @@ function useHomeDashboard({
     isLoadingDashboard,
     dashboardError,
     refreshHomeDashboard,
+    highlightRecord,
+    setHighlightRecord,
+
+    // Needs board
+    needsItems,
+    isLoadingNeeds,
+    needsError,
+
+    // Advice history
+    agentRuns,
+    isLoadingAgentRuns,
+    agentRunsError,
+
+    // Sharing
+    homeMembers,
+    inviteEmail,
+    setInviteEmail,
+    inviteRole,
+    setInviteRole,
+    inviteError,
+    inviteSuccess,
+    isInviting,
+    inviteHomeMember,
+    removeHomeMember,
+
+    // Onboarding gate
+    showOnboardingGate,
+    setOnboardingGateDismissed,
+    askUnlocked,
+    askLockReason,
 
     // Document upload
     selectedDocumentFile,
@@ -836,13 +1079,17 @@ function useHomeDashboard({
     setDocumentUploadError,
     documentUploadResult,
     setDocumentUploadResult,
+    documentOpenError,
     uploadDocument,
     openOriginalDocument,
+    openDocumentById,
+    deleteDocument,
 
     // Manual memory testing
     memoryForm,
     setMemoryForm,
     createMemory,
+    memoryFormError,
   };
 }
 

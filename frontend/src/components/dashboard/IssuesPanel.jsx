@@ -11,6 +11,8 @@ import {
   formatLabel,
 } from "../../utils/formatters.js";
 
+import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+
 
 // ---------------------------------------------------------
 // API CONFIGURATION
@@ -34,17 +36,26 @@ function IssuesPanel({
   issues,
   homeId,
   onRecordsChanged,
+  onOpenDocument,
+  highlightId,
 }) {
-  // Tracks the issue currently being saved, so its status
-  // select can disable itself while the request is in flight.
   const [savingIssueId, setSavingIssueId] =
     useState(null);
 
-  // Keyed by issue id so each card can show its own error
-  // without affecting the others.
   const [issueErrors, setIssueErrors] =
     useState({});
 
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    description: "",
+    priority: "medium",
+    category: "general",
+  });
+
+  const [createError, setCreateError] =
+    useState("");
+  const [isCreating, setIsCreating] =
+    useState(false);
   async function handleStatusChange(
     issue,
     newStatus
@@ -82,26 +93,124 @@ function IssuesPanel({
     }
   }
 
-  if (issues.length === 0) {
-    return (
-      <div className="empty-state dashboard-empty">
-        <h4>No issues recorded</h4>
+  async function createIssue(event) {
+    event.preventDefault();
 
-        <p>
-          Tell HouseIQ about a leak,
-          malfunction, odor, recurring
-          problem, or safety concern.
-        </p>
-      </div>
-    );
+    if (!homeId) {
+      return;
+    }
+
+    if (!createForm.title.trim()) {
+      setCreateError("Title is required.");
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError("");
+
+    try {
+      await api.post(
+        `${API_URL}/homes/${homeId}/issues`,
+        {
+          title: createForm.title.trim(),
+          description:
+            createForm.description.trim(),
+          priority: createForm.priority,
+          category: createForm.category,
+        }
+      );
+
+      setCreateForm({
+        title: "",
+        description: "",
+        priority: "medium",
+        category: "general",
+      });
+
+      if (onRecordsChanged) {
+        await onRecordsChanged();
+      }
+    } catch (error) {
+      setCreateError(
+        error.response?.data?.error ||
+          "Could not create this issue."
+      );
+    } finally {
+      setIsCreating(false);
+    }
   }
 
   return (
+    <div className="issues-panel-wrap">
+      <form
+        className="stack manual-create-form"
+        onSubmit={createIssue}
+      >
+        <h4>Add an issue manually</h4>
+        <input
+          value={createForm.title}
+          onChange={(event) =>
+            setCreateForm({
+              ...createForm,
+              title: event.target.value,
+            })
+          }
+          placeholder="Issue title"
+        />
+        <textarea
+          value={createForm.description}
+          onChange={(event) =>
+            setCreateForm({
+              ...createForm,
+              description: event.target.value,
+            })
+          }
+          placeholder="What is going wrong?"
+        />
+        <select
+          value={createForm.priority}
+          onChange={(event) =>
+            setCreateForm({
+              ...createForm,
+              priority: event.target.value,
+            })
+          }
+        >
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button type="submit" disabled={isCreating}>
+          {isCreating ? "Saving…" : "Save issue"}
+        </button>
+        {createError ? (
+          <p className="error-message" role="alert">
+            {createError}
+          </p>
+        ) : null}
+      </form>
+
+      {issues.length === 0 ? (
+        <div className="empty-state dashboard-empty">
+          <h4>No issues recorded</h4>
+          <p>
+            Tell HouseIQ about a leak,
+            malfunction, odor, recurring
+            problem, or safety concern.
+          </p>
+        </div>
+      ) : (
     <div className="record-grid">
       {issues.map((issue) => (
         <article
           key={issue.id}
-          className="record-card issue-card"
+          id={`record-issue-${issue.id}`}
+          className={
+            highlightId === issue.id
+              ? "record-card issue-card record-highlight"
+              : "record-card issue-card"
+          }
         >
           <div className="record-card-header">
             <div>
@@ -122,6 +231,19 @@ function IssuesPanel({
               )}
             </span>
           </div>
+
+          <ProvenanceLine
+            sourceFileName={
+              issue.source_file_name
+            }
+            sourceDocumentType={
+              issue.source_document_type
+            }
+            sourceDocumentId={
+              issue.source_document_id
+            }
+            onOpenDocument={onOpenDocument}
+          />
 
           <p className="record-description">
             {issue.description}
@@ -200,6 +322,8 @@ function IssuesPanel({
           )}
         </article>
       ))}
+    </div>
+      )}
     </div>
   );
 }

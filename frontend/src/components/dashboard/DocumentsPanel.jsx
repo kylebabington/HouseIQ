@@ -7,8 +7,46 @@ import {
   formatLabel,
 } from "../../utils/formatters.js";
 
+import {
+  useState,
+} from "react";
 
-function DocumentsPanel({ documents, openOriginalDocument }) {
+
+function DocumentsPanel({
+  documents,
+  openOriginalDocument,
+  onDeleteDocument,
+  canDelete = true,
+}) {
+  const [deletingId, setDeletingId] =
+    useState(null);
+  const [pendingDeleteId, setPendingDeleteId] =
+    useState(null);
+  const [deleteError, setDeleteError] =
+    useState("");
+
+  async function confirmDelete(documentRecord) {
+    if (!onDeleteDocument) {
+      return;
+    }
+
+    setDeletingId(documentRecord.id);
+    setDeleteError("");
+
+    try {
+      await onDeleteDocument(documentRecord);
+      setPendingDeleteId(null);
+    } catch (error) {
+      setDeleteError(
+        error.response?.data?.error ||
+          error.message ||
+          "Could not delete this document."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   if (documents.length === 0) {
     return (
       <div className="empty-state dashboard-empty">
@@ -18,10 +56,10 @@ function DocumentsPanel({ documents, openOriginalDocument }) {
 
         <p>
           Upload an inspection report,
-          invoice, receipt, warranty, or
-          equipment manual to begin
-          building the home's document
-          history.
+          invoice, receipt, warranty,
+          equipment manual, or a photo of
+          a nameplate to begin building
+          the home&apos;s document history.
         </p>
       </div>
     );
@@ -29,6 +67,12 @@ function DocumentsPanel({ documents, openOriginalDocument }) {
 
   return (
     <div className="record-grid">
+      {deleteError ? (
+        <p className="error-message" role="alert">
+          {deleteError}
+        </p>
+      ) : null}
+
       {documents.map((documentRecord) => {
         const metadata =
           documentRecord.metadata || {};
@@ -137,23 +181,72 @@ function DocumentsPanel({ documents, openOriginalDocument }) {
                 )}
               </small>
 
-              {documentRecord.metadata?.s3Key ? (
-                <button
-                  type="button"
-                  className="document-open-button"
-                  onClick={() =>
-                    openOriginalDocument(
-                      documentRecord
-                    )
-                  }
-                >
-                  Open original
-                </button>
-              ) : (
-                <span className="original-unavailable">
-                  Original unavailable
-                </span>
-              )}
+              <div className="document-actions">
+                {documentRecord.metadata?.s3Key ? (
+                  <button
+                    type="button"
+                    className="document-open-button"
+                    onClick={() =>
+                      openOriginalDocument(
+                        documentRecord
+                      )
+                    }
+                  >
+                    Open original
+                  </button>
+                ) : (
+                  <span className="original-unavailable">
+                    Original unavailable
+                  </span>
+                )}
+
+                {canDelete && onDeleteDocument ? (
+                  pendingDeleteId ===
+                  documentRecord.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="danger-button"
+                        disabled={
+                          deletingId ===
+                          documentRecord.id
+                        }
+                        onClick={() =>
+                          confirmDelete(
+                            documentRecord
+                          )
+                        }
+                      >
+                        {deletingId ===
+                        documentRecord.id
+                          ? "Deleting…"
+                          : "Confirm delete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() =>
+                          setPendingDeleteId(null)
+                        }
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() =>
+                        setPendingDeleteId(
+                          documentRecord.id
+                        )
+                      }
+                    >
+                      Delete
+                    </button>
+                  )
+                ) : null}
+              </div>
             </div>
           </article>
         );

@@ -94,32 +94,44 @@ The backend runs at `http://localhost:5000` and the frontend at
 
 ## Signature demo script
 
-This walks through HouseIQ's core loop: give it a document, then ask it a question
-and watch it use what it just learned. Sample fixtures live in [`DOCS/`](DOCS/).
+This walks through HouseIQ's core loop: densify what the home knows, then watch
+HouseIQ retrieve better than a binder. Sample fixtures live in [`DOCS/`](DOCS/).
 
 1. **Sign in** and create a home (e.g. "1978 Ranch", built 1978).
-2. **Upload a document.** Under "Upload a home document," choose *Inspection report*
-   and select `DOCS/sample-inspection.txt` (or the PDF version,
-   `DOCS/Fictitious_Home_Inspection_Report.pdf`). HouseIQ extracts facts and creates
-   issues, assets, and memories automatically — watch the "What HouseIQ updated"
-   list populate.
-3. **Upload a second document.** Choose *Repair invoice* and select
+2. **Complete (or skip) the onboarding gate.** ZIP / property basics unlock Ask
+   and sharpen the "What your house needs" board.
+3. **Upload a document or photo.** Under "Upload a home document or photo," choose
+   *Inspection report* and select `DOCS/sample-inspection.txt` (or the PDF /
+   a photo of a page). HouseIQ extracts facts and creates issues, assets, and
+   memories — with provenance back to the source file.
+4. **Check the needs board** above Ask — ranked priorities appear from open
+   issues, equipment age, and local season *before* you ask.
+5. **Upload a second document.** Choose *Repair invoice* and select
    `DOCS/SAMPLE HVAC REPAIR INVOICE.txt`. HouseIQ links this to what it already
    knows about the home's HVAC system.
-4. **Ask HouseIQ a question.** Use the compact "Ask HouseIQ" shortcut under the home
-   header (or scroll to "Tell HouseIQ what is happening") and ask something like:
+6. **Ask HouseIQ a question** (once basics are known), e.g.:
 
    > What should I do before winter?
 
-   HouseIQ answers using the home profile, the documents you just uploaded, and any
-   open issues — and shows exactly what context it used to answer.
-5. **Click an action chip** in the response (e.g. "Issue Created: ...") to jump
-   straight to that record in the dashboard below.
-6. **Keep the conversation going.** Ask a follow-up in the same session — HouseIQ
-   keeps the full turn history on screen and remembers the last couple of turns of
-   context.
+   HouseIQ answers using the home profile, documents, and open issues — and
+   shows what context it used. Advice is also saved under **Advice history**.
+7. **Click an action chip** or a needs-board row to jump to that record.
+8. **Optional:** Share the home (Profile tab) by invite email; the invitee
+   redeems on next sign-in when their token includes that email. Search memories
+   with "Find anything about this home."
+
+## Household sharing notes
+
+- Roles: `owner` (full), `member` (read/write except delete home / manage
+  members), `viewer` (read + ask).
+- Invites store an email; `POST /api/homes/members/redeem` attaches the signed-in
+  user when their Auth0 access token includes a matching `email` claim.
+- Access tokens often omit email unless Auth0 is configured to add it — document
+  that limitation for demos.
 
 ## API testing
 
 A ready-to-use Postman collection (with automatic Auth0 token handling) lives in
 [`postman/`](postman/). See [`postman/README.md`](postman/README.md) for setup.
+New routes include `GET /homes/:homeId/needs`, `GET /homes/:homeId/agent-runs`,
+and `/homes/:homeId/members`.
