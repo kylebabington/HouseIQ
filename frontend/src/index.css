@@ -120,14 +120,20 @@ h5,
   font-size: 0.78rem;
 }
 
-/* Reserved for the logged-out marketing hero in AuthScreens.jsx.
-   The authenticated shell uses .brand-wordmark instead — see
-   APP TOPBAR below. */
-h1 {
+/* Marketing display size is scoped to the login brand hero only.
+   Loading/error auth screens use a quieter heading scale. */
+.auth-card.brand-hero h1 {
   margin-bottom: 0;
   font-size: clamp(3rem, 8vw, 6rem);
   line-height: 0.9;
   letter-spacing: -0.06em;
+}
+
+.auth-card h1 {
+  margin-bottom: 0.75rem;
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
 }
 
 
@@ -2108,4 +2114,195 @@ button:disabled {
   .text-button {
     align-self: flex-start;
   }
+}
+/* --------------------------------------------------------- */
+/* NEEDS BOARD / ONBOARDING GATE / PROVENANCE / SHARE        */
+/* --------------------------------------------------------- */
+
+.needs-board {
+  margin: 1.25rem 0 1.75rem;
+  padding: 1.5rem 1.75rem;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 26px;
+  backdrop-filter: blur(8px);
+}
+
+.needs-board-intro {
+  margin-bottom: 1rem;
+  color: #4e6f53;
+}
+
+.needs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.needs-item {
+  width: 100%;
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(47, 74, 53, 0.12);
+  background: rgba(238, 243, 234, 0.7);
+  cursor: pointer;
+}
+
+.needs-item:hover {
+  border-color: rgba(47, 74, 53, 0.28);
+  background: #eef3ea;
+}
+
+.needs-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.needs-reason {
+  color: #4e6f53;
+  font-size: 0.92rem;
+}
+
+.onboarding-gate {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 1.5rem;
+}
+
+.onboarding-gate-card {
+  padding: 1.75rem;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(47, 74, 53, 0.14);
+}
+
+.onboarding-gate-lock {
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(126, 169, 129, 0.2);
+  color: #2f4a35;
+}
+
+.onboarding-gate-actions {
+  margin-top: 1rem;
+}
+
+.provenance-line {
+  margin: 0.35rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: #4e6f53;
+}
+
+.provenance-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #2f4a35;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.advice-history,
+.share-home,
+.panel-block {
+  margin-top: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.advice-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.advice-question {
+  font-weight: 600;
+}
+
+.advice-meta {
+  display: block;
+  font-size: 0.82rem;
+  color: #4e6f53;
+}
+
+.advice-answer {
+  margin-top: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.memory-search-form,
+.manual-create-form {
+  margin-bottom: 1.25rem;
+}
+
+.memory-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.memory-search-row input {
+  flex: 1 1 220px;
+}
+
+.record-highlight {
+  outline: 2px solid #7ea981;
+  outline-offset: 2px;
+}
+
+.asset-attention {
+  font-size: 0.88rem;
+  color: #4e6f53;
+  margin: 0 0 0.75rem;
+}
+
+.member-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.member-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.danger-button {
+  color: #7a2e2e;
+  border-color: rgba(122, 46, 46, 0.35);
+}
+
+.success-message {
+  color: #2f4a35;
+  font-weight: 600;
+}
+
+.selected-home-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
 }

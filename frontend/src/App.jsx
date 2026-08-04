@@ -17,20 +17,22 @@ import useHomeDashboard from "./hooks/useHomeDashboard.js";
 import getAuthScreen from "./components/auth/getAuthScreen.jsx";
 
 import AgentPanel from "./components/agent/AgentPanel.jsx";
+import AdviceHistoryPanel from "./components/agent/AdviceHistoryPanel.jsx";
 import DocumentUploadPanel from "./components/documents/DocumentUploadPanel.jsx";
 import ManualMemoryPanel from "./components/memories/ManualMemoryPanel.jsx";
 
 import HomeProfile from "./components/home-profile/HomeProfile.jsx";
+import OnboardingGate from "./components/home-profile/OnboardingGate.jsx";
+import ShareHomePanel from "./components/home-profile/ShareHomePanel.jsx";
 
 import IssuesPanel from "./components/dashboard/IssuesPanel.jsx";
 import ProjectsPanel from "./components/dashboard/ProjectsPanel.jsx";
 import AssetsPanel from "./components/dashboard/AssetsPanel.jsx";
 import MemoriesPanel from "./components/dashboard/MemoriesPanel.jsx";
 import DocumentsPanel from "./components/dashboard/DocumentsPanel.jsx";
+import NeedsBoard from "./components/dashboard/NeedsBoard.jsx";
 
 import { formatLabel } from "./utils/formatters.js";
-
-import "./index.css";
 
 
 // ---------------------------------------------------------
@@ -144,6 +146,8 @@ function App() {
     selectHome,
     createHome,
     createHomeError,
+    deleteHome,
+    isHomeOwner,
 
     issues,
     projects,
@@ -162,6 +166,32 @@ function App() {
     isLoadingDashboard,
     dashboardError,
     refreshHomeDashboard,
+    highlightRecord,
+    setHighlightRecord,
+
+    needsItems,
+    isLoadingNeeds,
+    needsError,
+
+    agentRuns,
+    isLoadingAgentRuns,
+    agentRunsError,
+
+    homeMembers,
+    inviteEmail,
+    setInviteEmail,
+    inviteRole,
+    setInviteRole,
+    inviteError,
+    inviteSuccess,
+    isInviting,
+    inviteHomeMember,
+    removeHomeMember,
+
+    showOnboardingGate,
+    setOnboardingGateDismissed,
+    askUnlocked,
+    askLockReason,
 
     selectedDocumentFile,
     setSelectedDocumentFile,
@@ -172,12 +202,16 @@ function App() {
     setDocumentUploadError,
     documentUploadResult,
     setDocumentUploadResult,
+    documentOpenError,
     uploadDocument,
     openOriginalDocument,
+    openDocumentById,
+    deleteDocument,
 
     memoryForm,
     setMemoryForm,
     createMemory,
+    memoryFormError,
   } = useHomeDashboard({
     isAuthenticated,
     isAuthLoading,
@@ -260,10 +294,53 @@ function App() {
   // CHOOSE WHICH TAB CONTENT TO DISPLAY
   // -----------------------------------------------------
 
+  function handleSelectNeed(item) {
+    const tabByKind = {
+      issue: "issues",
+      project: "projects",
+      lifecycle: "assets",
+      seasonal: "profile",
+    };
+
+    const tab = tabByKind[item.kind] || "issues";
+    setActiveTab(tab);
+    setHighlightRecord({
+      kind: item.kind,
+      id: item.id,
+    });
+
+    window.setTimeout(() => {
+      const element = document.getElementById(
+        `record-${item.kind === "lifecycle" ? "asset" : item.kind}-${item.id}`
+      );
+      element?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+  }
+
   function renderActiveTab() {
     switch (activeTab) {
       case "profile":
-        return renderHomeProfile();
+        return (
+          <>
+            {renderHomeProfile()}
+            <ShareHomePanel
+              members={homeMembers}
+              isOwner={isHomeOwner}
+              inviteEmail={inviteEmail}
+              setInviteEmail={setInviteEmail}
+              inviteRole={inviteRole}
+              setInviteRole={setInviteRole}
+              inviteError={inviteError}
+              inviteSuccess={inviteSuccess}
+              onInvite={inviteHomeMember}
+              onRemove={removeHomeMember}
+              isBusy={isInviting}
+            />
+          </>
+        );
 
       case "projects":
         return (
@@ -273,6 +350,12 @@ function App() {
             onRecordsChanged={
               refreshDashboardForSelectedHome
             }
+            highlightId={
+              highlightRecord?.kind === "project"
+                ? highlightRecord.id
+                : null
+            }
+            onOpenDocument={openDocumentById}
           />
         );
 
@@ -284,6 +367,12 @@ function App() {
             onRecordsChanged={
               refreshDashboardForSelectedHome
             }
+            highlightId={
+              highlightRecord?.kind === "lifecycle"
+                ? highlightRecord.id
+                : null
+            }
+            onOpenDocument={openDocumentById}
           />
         );
 
@@ -295,6 +384,12 @@ function App() {
             onRecordsChanged={
               refreshDashboardForSelectedHome
             }
+            onOpenDocument={openDocumentById}
+            highlightId={
+              highlightRecord?.kind === "memory"
+                ? highlightRecord.id
+                : null
+            }
           />
         );
 
@@ -303,6 +398,8 @@ function App() {
           <DocumentsPanel
             documents={documents}
             openOriginalDocument={openOriginalDocument}
+            onDeleteDocument={deleteDocument}
+            canDelete={isHomeOwner || selectedHome?.member_role === "member"}
           />
         );
 
@@ -314,6 +411,12 @@ function App() {
             homeId={selectedHome?.id}
             onRecordsChanged={
               refreshDashboardForSelectedHome
+            }
+            onOpenDocument={openDocumentById}
+            highlightId={
+              highlightRecord?.kind === "issue"
+                ? highlightRecord.id
+                : null
             }
           />
         );
@@ -518,6 +621,26 @@ function App() {
         <section className="panel main-panel">
           {selectedHome ? (
             <>
+              {showOnboardingGate ? (
+                <OnboardingGate
+                  homeId={selectedHome.id}
+                  homeProfile={homeProfile}
+                  onProfileSaved={async () => {
+                    await fetchHomeProfile(
+                      selectedHome.id
+                    );
+                    await refreshHomeDashboard(
+                      selectedHome.id
+                    );
+                  }}
+                  onSkip={() =>
+                    setOnboardingGateDismissed(true)
+                  }
+                  askUnlocked={askUnlocked}
+                  askLockReason={askLockReason}
+                />
+              ) : null}
+
               <header className="selected-home-header">
                 <div>
                   <p className="eyebrow">
@@ -578,6 +701,22 @@ function App() {
                     ? "Refreshing..."
                     : "Refresh Home"}
                 </button>
+
+                {isHomeOwner ? (
+                  <button
+                    type="button"
+                    className="secondary-button danger-button"
+                    onClick={async () => {
+                      try {
+                        await deleteHome();
+                      } catch (error) {
+                        console.error(error);
+                      }
+                    }}
+                  >
+                    Delete home
+                  </button>
+                ) : null}
               </header>
 
 
@@ -613,6 +752,7 @@ function App() {
                   <button
                     type="button"
                     className="secondary-button"
+                    disabled={!askUnlocked}
                     onClick={() =>
                       scrollToSection(
                         "houseiq-agent-textarea",
@@ -625,11 +765,18 @@ function App() {
                 </div>
               </section>
 
-              {/* -------------------------------- */}
-              {/* AGENT + DOCUMENT UPLOAD          */}
-              {/* -------------------------------- */}
-              {/* Side by side so the two demo actions HouseIQ
-                  hinges on both sit in the first viewport. */}
+              <NeedsBoard
+                items={needsItems}
+                isLoading={isLoadingNeeds}
+                error={needsError}
+                onSelectNeed={handleSelectNeed}
+              />
+
+              {documentOpenError ? (
+                <p className="error-message" role="alert">
+                  {documentOpenError}
+                </p>
+              ) : null}
 
               <div
                 key={
@@ -640,6 +787,8 @@ function App() {
               >
                 <AgentPanel
                   selectedHome={selectedHome}
+                  askLocked={!askUnlocked}
+                  askLockReason={askLockReason}
                   onRecordsChanged={() =>
                     refreshHomeDashboard(
                       selectedHome.id
@@ -676,11 +825,16 @@ function App() {
                   setDocumentUploadResult={
                     setDocumentUploadResult
                   }
-                  uploadDocument={
-                    uploadDocument
-                  }
+                  uploadDocument={uploadDocument}
+                  onNavigateTab={setActiveTab}
                 />
               </div>
+
+              <AdviceHistoryPanel
+                runs={agentRuns}
+                isLoading={isLoadingAgentRuns}
+                error={agentRunsError}
+              />
 
 
               {/* -------------------------------- */}
@@ -955,6 +1109,9 @@ function App() {
                   }
                   createMemory={
                     createMemory
+                  }
+                  memoryFormError={
+                    memoryFormError
                   }
                 />
               )}

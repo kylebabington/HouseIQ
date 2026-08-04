@@ -1211,6 +1211,24 @@
       "name": "Agent",
       "item": [
         {
+          "name": "GET /api/homes/:homeId/needs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/needs",
+            "description": "Ranked priorities from open issues, projects, asset lifecycle, and local season."
+          }
+        },
+        {
+          "name": "GET /api/homes/:homeId/agent-runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/homes/{{homeId}}/agent-runs",
+            "description": "Persisted advice history for a home."
+          }
+        },
+        {
           "name": "POST /api/homes/:homeId/ask",
           "request": {
             "method": "POST",

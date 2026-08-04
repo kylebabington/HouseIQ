@@ -124,6 +124,8 @@ function AgentPanel({
   selectedHome,
   onRecordsChanged,
   onNavigateTab,
+  askLocked = false,
+  askLockReason = "",
 }) {
   // -----------------------------------------------------
   // HOUSEIQ AGENT STATE
@@ -150,6 +152,15 @@ function AgentPanel({
 
   async function askHouseIQ(event) {
     event.preventDefault();
+
+    if (askLocked) {
+      setAskError(
+        askLockReason
+          ? `Ask is locked until HouseIQ knows more about this home (${askLockReason}).`
+          : "Ask is locked until HouseIQ knows more about this home."
+      );
+      return;
+    }
 
     if (!selectedHome) {
       setAskError(
@@ -301,6 +312,15 @@ function AgentPanel({
         </span>
       </div>
 
+      {askLocked ? (
+        <p className="onboarding-gate-lock" role="status">
+          Ask is locked until basics are known
+          {askLockReason
+            ? `: ${askLockReason}`
+            : "."}
+        </p>
+      ) : null}
+
       <form
         onSubmit={askHouseIQ}
         className="agent-form"
@@ -308,6 +328,7 @@ function AgentPanel({
         <textarea
           id="houseiq-agent-textarea"
           value={question}
+          disabled={askLocked || isAsking}
           onChange={(event) =>
             setQuestion(
               event.target.value
@@ -318,7 +339,7 @@ function AgentPanel({
 
         <button
           type="submit"
-          disabled={isAsking}
+          disabled={isAsking || askLocked}
         >
           {isAsking
             ? "HouseIQ is thinking..."
