@@ -84,6 +84,84 @@ export const ONBOARDING_QUESTIONS = [
 
     {
         field:
+            "postalCode",
+
+        title:
+            "What is the home's ZIP / postal code?",
+
+        helpText:
+            "Used for seasonal priorities that fit this climate — not shared publicly.",
+
+        inputType:
+            "text",
+
+        placeholder:
+            "Example: 44101",
+
+        parseValue:
+            (value) => {
+                const trimmed =
+                    typeof value === "string"
+                        ? value.trim()
+                        : "";
+                return trimmed || null;
+            },
+    },
+
+    {
+        field:
+            "city",
+
+        title:
+            "What city is the home in?",
+
+        helpText:
+            "Optional but helps HouseIQ localize advice.",
+
+        inputType:
+            "text",
+
+        placeholder:
+            "Example: Cleveland",
+
+        parseValue:
+            (value) => {
+                const trimmed =
+                    typeof value === "string"
+                        ? value.trim()
+                        : "";
+                return trimmed || null;
+            },
+    },
+
+    {
+        field:
+            "state",
+
+        title:
+            "What state is the home in?",
+
+        helpText:
+            "Two-letter code is fine (e.g. OH).",
+
+        inputType:
+            "text",
+
+        placeholder:
+            "Example: OH",
+
+        parseValue:
+            (value) => {
+                const trimmed =
+                    typeof value === "string"
+                        ? value.trim()
+                        : "";
+                return trimmed || null;
+            },
+    },
+
+    {
+        field:
             "squareFeet",
 
         title:

@@ -71,6 +71,15 @@ export const HOME_PROFILE_FIELDS = {
     lotSizeAcres:
         "lot_size_acres",
 
+    postalCode:
+        "postal_code",
+
+    city:
+        "city",
+
+    state:
+        "state",
+
     onboardingStatus:
         "onboarding_status",
 
@@ -98,6 +107,9 @@ const HOME_PROFILE_STRING_FIELDS =
         "waterSource",
         "sewerType",
         "garageType",
+        "postalCode",
+        "city",
+        "state",
         "onboardingStatus",
         "onboardingStep",
     ]);
@@ -438,6 +450,15 @@ export function formatHomeProfile(
                 : Number(
                     row.lot_size_acres
                 ),
+
+        postalCode:
+            row.postal_code,
+
+        city:
+            row.city,
+
+        state:
+            row.state,
 
         onboardingStatus:
             row.onboarding_status ||

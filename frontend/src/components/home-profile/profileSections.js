@@ -31,6 +31,10 @@ export const EMPTY_PROFILE_FORM = {
     garageType: "",
     garageSpaces: "",
     lotSizeAcres: "",
+
+    postalCode: "",
+    city: "",
+    state: "",
 };
 
 
@@ -554,6 +558,31 @@ export const PROFILE_SECTIONS = [
                 minimum: 0.01,
                 step: 0.01,
                 unit: "acres",
+            },
+        ],
+    },
+
+    {
+        id: "location",
+        title: "Location",
+        description:
+            "Used for seasonal priorities that fit this climate.",
+
+        fields: [
+            {
+                name: "postalCode",
+                label: "ZIP / postal code",
+                type: "text",
+            },
+            {
+                name: "city",
+                label: "City",
+                type: "text",
+            },
+            {
+                name: "state",
+                label: "State",
+                type: "text",
             },
         ],
     },
