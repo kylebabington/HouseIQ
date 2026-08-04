@@ -11,6 +11,8 @@ import {
   formatLabel,
 } from "../../utils/formatters.js";
 
+import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+
 
 // ---------------------------------------------------------
 // API CONFIGURATION
@@ -33,8 +35,9 @@ function MemoriesPanel({
   memories,
   homeId,
   onRecordsChanged,
+  onOpenDocument,
+  highlightId,
 }) {
-  // The id of the memory currently in edit mode, or null.
   const [editingMemoryId, setEditingMemoryId] =
     useState(null);
 
@@ -46,6 +49,18 @@ function MemoriesPanel({
 
   const [deletingMemoryId, setDeletingMemoryId] =
     useState(null);
+
+  const [pendingDeleteId, setPendingDeleteId] =
+    useState(null);
+
+  const [searchQuery, setSearchQuery] =
+    useState("");
+  const [searchResults, setSearchResults] =
+    useState(null);
+  const [isSearching, setIsSearching] =
+    useState(false);
+  const [searchError, setSearchError] =
+    useState("");
 
   // Keyed by memory id so each card can show its own error.
   const [memoryErrors, setMemoryErrors] =
@@ -133,14 +148,6 @@ function MemoriesPanel({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete the memory "${memory.title}"? This cannot be undone.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
     setDeletingMemoryId(memory.id);
 
     setMemoryErrors((current) => ({
@@ -152,6 +159,8 @@ function MemoriesPanel({
       await api.delete(
         `${API_URL}/homes/${homeId}/memories/${memory.id}`
       );
+
+      setPendingDeleteId(null);
 
       if (onRecordsChanged) {
         await onRecordsChanged();
@@ -169,23 +178,96 @@ function MemoriesPanel({
     }
   }
 
-  if (memories.length === 0) {
-    return (
-      <div className="empty-state dashboard-empty">
-        <h4>No memories yet</h4>
+  async function runMemorySearch(event) {
+    event.preventDefault();
 
-        <p>
-          HouseIQ will save repairs,
-          maintenance history, home facts,
-          and useful observations here.
-        </p>
-      </div>
-    );
+    if (!homeId || !searchQuery.trim()) {
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError("");
+
+    try {
+      const response = await api.post(
+        `${API_URL}/homes/${homeId}/memory-search`,
+        { query: searchQuery.trim() }
+      );
+
+      setSearchResults(
+        response.data.results ||
+          response.data ||
+          []
+      );
+    } catch (error) {
+      setSearchError(
+        error.response?.data?.error ||
+          "Memory search failed."
+      );
+      setSearchResults(null);
+    } finally {
+      setIsSearching(false);
+    }
   }
 
+  const displayedMemories =
+    searchResults != null
+      ? searchResults
+      : memories;
+
   return (
+    <div className="memories-panel-wrap">
+      <form
+        className="memory-search-form"
+        onSubmit={runMemorySearch}
+      >
+        <label htmlFor="memory-search-input">
+          Find anything about this home
+        </label>
+        <div className="memory-search-row">
+          <input
+            id="memory-search-input"
+            value={searchQuery}
+            onChange={(event) =>
+              setSearchQuery(event.target.value)
+            }
+            placeholder="Filter size, sump pump, roof leak…"
+          />
+          <button type="submit" disabled={isSearching}>
+            {isSearching ? "Searching…" : "Search"}
+          </button>
+          {searchResults != null ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setSearchResults(null);
+                setSearchQuery("");
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+        {searchError ? (
+          <p className="error-message" role="alert">
+            {searchError}
+          </p>
+        ) : null}
+      </form>
+
+      {displayedMemories.length === 0 ? (
+        <div className="empty-state dashboard-empty">
+          <h4>No memories yet</h4>
+          <p>
+            HouseIQ will save repairs,
+            maintenance history, home facts,
+            and useful observations here.
+          </p>
+        </div>
+      ) : (
     <div className="record-grid">
-      {memories.map((memory) => {
+      {displayedMemories.map((memory) => {
         const isEditing =
           editingMemoryId === memory.id;
 
@@ -195,7 +277,12 @@ function MemoriesPanel({
         return (
           <article
             key={memory.id}
-            className="record-card memory-card"
+            id={`record-memory-${memory.id}`}
+            className={
+              highlightId === memory.id
+                ? "record-card memory-card record-highlight"
+                : "record-card memory-card"
+            }
           >
             <div className="record-card-header">
               <div>
@@ -280,6 +367,19 @@ function MemoriesPanel({
               </div>
             ) : (
               <>
+                <ProvenanceLine
+                  sourceFileName={
+                    memory.source_file_name
+                  }
+                  sourceDocumentType={
+                    memory.source_document_type
+                  }
+                  sourceDocumentId={
+                    memory.source_document_id
+                  }
+                  onOpenDocument={onOpenDocument}
+                />
+
                 <p className="record-description">
                   {memory.content}
                 </p>
@@ -295,18 +395,43 @@ function MemoriesPanel({
                     Edit
                   </button>
 
-                  <button
-                    type="button"
-                    className="small-button text-button"
-                    disabled={isDeleting}
-                    onClick={() =>
-                      deleteMemory(memory)
-                    }
-                  >
-                    {isDeleting
-                      ? "Deleting…"
-                      : "Delete"}
-                  </button>
+                  {pendingDeleteId === memory.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="small-button danger-button"
+                        disabled={isDeleting}
+                        onClick={() =>
+                          deleteMemory(memory)
+                        }
+                      >
+                        {isDeleting
+                          ? "Deleting…"
+                          : "Confirm delete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="small-button text-button"
+                        onClick={() =>
+                          setPendingDeleteId(null)
+                        }
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="small-button text-button"
+                      onClick={() =>
+                        setPendingDeleteId(
+                          memory.id
+                        )
+                      }
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -328,6 +453,8 @@ function MemoriesPanel({
           </article>
         );
       })}
+    </div>
+      )}
     </div>
   );
 }

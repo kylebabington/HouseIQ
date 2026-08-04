@@ -38,20 +38,19 @@ function DocumentUploadPanel({
           </p>
 
           <h3>
-            Upload a home document
+            Upload a home document or photo
           </h3>
 
           <p className="section-description">
-            Upload an inspection report,
-            invoice, receipt, warranty, or
-            manual. HouseIQ will extract the
-            useful facts and update the home
-            record.
+            Inspection reports, invoices, warranties,
+            manuals, or a phone photo of a nameplate /
+            report page. HouseIQ extracts facts and
+            updates this home&apos;s memory.
           </p>
         </div>
 
         <span className="document-support-badge">
-          PDF or TXT
+          PDF, TXT, or photo
         </span>
       </div>
 
@@ -112,7 +111,7 @@ function DocumentUploadPanel({
             <input
               id="houseiq-document-input"
               type="file"
-              accept=".pdf,.txt,application/pdf,text/plain"
+              accept=".pdf,.txt,.jpg,.jpeg,.png,.webp,application/pdf,text/plain,image/jpeg,image/png,image/webp"
               onChange={(event) => {
                 const file =
                   event.target.files?.[0] ||
