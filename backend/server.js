@@ -25,6 +25,7 @@ import { createAgentRouter } from "./routes/agent.js";
 import { createDocumentsRouter } from "./routes/documents.js";
 import { createHomeResourcesRouter } from "./routes/homeResources.js";
 import { createHomesRouter } from "./routes/homes.js";
+import { createNeedsRouter } from "./routes/needs.js";
 import { createProfileRouter } from "./routes/profile.js";
 import { createRecordsRouter } from "./routes/records.js";
 
@@ -97,6 +98,9 @@ const upload = multer({
         const allowedMimeTypes = [
             "application/pdf",
             "text/plain",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
         ];
 
         if (!allowedMimeTypes.includes(file.mimetype)) {
@@ -155,6 +159,11 @@ app.use(
 app.use(
     "/api",
     createAgentRouter()
+);
+
+app.use(
+    "/api",
+    createNeedsRouter()
 );
 
 // ---------------------------------------------------------

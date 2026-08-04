@@ -284,6 +284,7 @@ export async function generateHouseAgentResponse(
     const {
         home = null,
         profile = null,
+        localSeasonLine = null,
         memories = [],
         issues = [],
         projects = [],
@@ -297,6 +298,9 @@ export async function generateHouseAgentResponse(
 
     const homeContext = formatHomeContext(home);
     const profileContext = formatProfileContext(profile);
+    const seasonContext =
+        localSeasonLine ||
+        "No local season context is available yet.";
     const memoryContext = formatMemoryContext(memories);
     const issueContext = formatIssueContext(issues);
     const projectContext = formatProjectContext(projects);
@@ -710,6 +714,11 @@ ${homeContext}
 KNOWN PHYSICAL FACTS ABOUT THE HOME (from the home profile)
 
 ${profileContext}
+
+
+LOCAL SEASON CONTEXT
+
+${seasonContext}
 
 
 RELEVANT HOME MEMORY

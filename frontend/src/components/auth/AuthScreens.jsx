@@ -84,7 +84,7 @@ export function LoginScreen({
 }) {
   return (
     <main className="auth-page">
-      <section className="auth-card">
+      <section className="auth-card brand-hero">
         <p className="eyebrow">
           Agentic home memory
         </p>

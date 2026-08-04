@@ -75,6 +75,13 @@ export async function requireHomeOwnership(
     }
 }
 
+// Compatibility shim for routes that already take a role
+// option (e.g. needs board). Full membership roles land with
+// household sharing; until then every caller must own the home.
+export function requireHomeAccess(_options = {}) {
+    return requireHomeOwnership;
+}
+
 // ---------------------------------------------------------
 // DOCUMENT OWNERSHIP AUTHORIZATION
 // ---------------------------------------------------------

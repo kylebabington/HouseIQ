@@ -760,8 +760,8 @@ function App() {
                     aria-controls="dashboard-tabpanel"
                     className={
                       activeTab === "profile"
-                        ? "dashboard-tab active"
-                        : "dashboard-tab"
+                        ? "tab-button active"
+                        : "tab-button"
                     }
                     onClick={() =>
                       setActiveTab(

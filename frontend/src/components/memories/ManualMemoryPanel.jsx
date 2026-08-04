@@ -11,6 +11,7 @@ function ManualMemoryPanel({
   memoryForm,
   setMemoryForm,
   createMemory,
+  memoryFormError,
 }) {
   return (
     <details className="manual-panel">
@@ -28,6 +29,11 @@ function ManualMemoryPanel({
           should primarily talk to HouseIQ.
         </p>
 
+        {memoryFormError ? (
+          <p className="error-message" role="alert">
+            {memoryFormError}
+          </p>
+        ) : null}
         <input
           value={memoryForm.title}
           onChange={(event) =>

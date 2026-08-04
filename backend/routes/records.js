@@ -37,6 +37,10 @@ import {
     isValidUuid,
 } from "../lib/validation.js";
 
+import {
+    prepareMemoryEmbedding,
+} from "../services/recordHelpers.js";
+
 // ---------------------------------------------------------
 // FIELD ALLOWLISTS
 // ---------------------------------------------------------
@@ -722,9 +726,75 @@ export function createRecordsRouter() {
                     });
                 }
 
+                const titleOrContentChanged =
+                    updates.some(
+                        (update) =>
+                            update.column === "title" ||
+                            update.column === "content"
+                    );
+
+                if (titleOrContentChanged) {
+                    const currentResult =
+                        await pool.query(
+                            `
+                            SELECT title, category, content, metadata
+                            FROM memories
+                            WHERE id = $1
+                              AND home_id = $2
+                            LIMIT 1
+                            `,
+                            [memoryId, homeId]
+                        );
+
+                    if (currentResult.rows.length === 0) {
+                        return res.status(404).json({
+                            error: "Memory not found",
+                        });
+                    }
+
+                    const current =
+                        currentResult.rows[0];
+
+                    const nextTitle =
+                        updates.find(
+                            (u) => u.column === "title"
+                        )?.value ?? current.title;
+
+                    const nextContent =
+                        updates.find(
+                            (u) => u.column === "content"
+                        )?.value ?? current.content;
+
+                    const nextCategory =
+                        updates.find(
+                            (u) => u.column === "category"
+                        )?.value ?? current.category;
+
+                    const embeddingSql =
+                        await prepareMemoryEmbedding({
+                            title: nextTitle,
+                            category: nextCategory,
+                            content: nextContent,
+                            metadata:
+                                current.metadata || {},
+                        });
+
+                    updates.push({
+                        column: "embedding",
+                        value: embeddingSql,
+                    });
+                }
+
                 const setClauses = updates.map(
-                    (update, index) =>
-                        `${update.column} = $${index + 3}`
+                    (update, index) => {
+                        if (
+                            update.column === "embedding"
+                        ) {
+                            return `${update.column} = $${index + 3}::VECTOR(1536)`;
+                        }
+
+                        return `${update.column} = $${index + 3}`;
+                    }
                 );
 
                 const values = updates.map(
@@ -737,7 +807,19 @@ export function createRecordsRouter() {
                     SET ${setClauses.join(", ")}, updated_at = now()
                     WHERE id = $1
                       AND home_id = $2
-                    RETURNING *
+                    RETURNING
+                        id,
+                        home_id,
+                        asset_id,
+                        title,
+                        category,
+                        content,
+                        metadata,
+                        importance,
+                        source_document_id,
+                        source_agent_run_id,
+                        created_at,
+                        updated_at
                     `,
                     [memoryId, homeId, ...values]
                 );

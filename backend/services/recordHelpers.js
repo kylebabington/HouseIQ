@@ -3,27 +3,83 @@
 import pdf from "pdf-parse/lib/pdf-parse.js";
 
 import {
+    CHAT_MODEL,
     createEmbedding,
+    openai,
     vectorToSql,
 } from "./ai/index.js";
 
 import { pool } from "../db/pool.js";
 
-// ---------------------------------------------------------
-// DATABASE RECORD HELPERS
-// ---------------------------------------------------------
+/** Caps shared by /ask and document analysis side effects. */
+export const MAX_MEMORIES_PER_RUN = 3;
+export const MAX_ISSUES_PER_RUN = 2;
+export const MAX_PROJECTS_PER_RUN = 1;
+export const MAX_ASSETS_PER_RUN = 2;
 
-// ---------------------------------------------------------
-// DOCUMENT TEXT EXTRACTION
-// ---------------------------------------------------------
+const IMAGE_MIME_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+]);
 
 /**
- * Extracts readable text from an uploaded PDF or text file.
+ * Uses OpenAI vision to extract home-relevant text from a photo.
+ */
+async function extractTextFromImage(file) {
+    const base64 = file.buffer.toString("base64");
+    const dataUrl =
+        `data:${file.mimetype};base64,${base64}`;
+
+    const response =
+        await openai.chat.completions.create({
+            model: CHAT_MODEL,
+            temperature: 0.1,
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You extract all readable text and home-relevant facts from photos of invoices, nameplates, inspection pages, receipts, and equipment labels. Return plain text only. Include brand, model, serial, dates, amounts, and defect notes when visible. If nothing readable is present, say so briefly.",
+                },
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "text",
+                            text:
+                                `Extract all home-relevant text from this uploaded file named "${file.originalname || "photo"}".`,
+                        },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: dataUrl,
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+
+    const text =
+        response.choices?.[0]?.message?.content?.trim();
+
+    if (!text) {
+        throw new Error(
+            "No readable text could be extracted from this image."
+        );
+    }
+
+    return text;
+}
+
+/**
+ * Extracts readable text from an uploaded PDF, text file, or image.
  *
  * Supported MIME types:
  *
  * - application/pdf
  * - text/plain
+ * - image/jpeg, image/png, image/webp
  */
 export async function extractTextFromUploadedFile(file) {
     if (!file) {
@@ -55,19 +111,78 @@ export async function extractTextFromUploadedFile(file) {
 
         if (!text) {
             throw new Error(
-                "No readable text could be extracted from this PDF. It may be a scanned image PDF."
+                "No readable text could be extracted from this PDF. It may be a scanned image PDF — upload a photo of the page instead."
             );
         }
 
         return text;
     }
 
+    if (IMAGE_MIME_TYPES.has(file.mimetype)) {
+        return extractTextFromImage(file);
+    }
+
     throw new Error(
         `Unsupported file type: ${file.mimetype}`
     );
 }
+
+/**
+ * Builds the text blob used for memory embeddings.
+ */
+export function buildMemoryEmbeddingText({
+    title,
+    category,
+    content,
+    metadata = {},
+}) {
+    return `
+Title: ${title}
+Category: ${category}
+Content: ${content}
+Metadata: ${JSON.stringify(metadata)}
+`;
+}
+
+/**
+ * Creates an embedding for a memory *before* opening a DB
+ * transaction, so OpenAI latency never holds a pool connection.
+ */
+export async function prepareMemoryEmbedding({
+    title,
+    category,
+    content,
+    metadata = {},
+}) {
+    const embedding = await createEmbedding(
+        buildMemoryEmbeddingText({
+            title,
+            category,
+            content,
+            metadata,
+        })
+    );
+
+    return vectorToSql(embedding);
+}
+
+/**
+ * Normalizes asset type + name for duplicate detection.
+ */
+export function normalizeAssetKey(assetType, name) {
+    return `${String(assetType || "")
+        .trim()
+        .toLowerCase()}::${String(name || "")
+        .trim()
+        .toLowerCase()}`;
+}
+
 /**
  * Creates a permanent memory and its vector embedding.
+ *
+ * Prefer passing a precomputed `embeddingSql` (from
+ * prepareMemoryEmbedding) when calling inside a transaction so
+ * OpenAI work happens outside the txn.
  *
  * The optional `client` argument lets this function participate
  * in a database transaction.
@@ -82,6 +197,9 @@ export async function createMemoryRecord({
     importance = 3,
     assetId = null,
     metadata = {},
+    embeddingSql: providedEmbeddingSql = null,
+    sourceDocumentId = null,
+    sourceAgentRunId = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -103,20 +221,14 @@ export async function createMemoryRecord({
             ? Math.min(Math.max(importance, 1), 5)
             : 3;
 
-    // Include the title, category, and metadata in the embedded text.
-    // This produces better semantic searches than embedding only content.
-    const memoryTextForEmbedding = `
-Title: ${safeTitle}
-Category: ${safeCategory}
-Content: ${content.trim()}
-Metadata: ${JSON.stringify(metadata)}
-`;
-
-    const embedding =
-        await createEmbedding(memoryTextForEmbedding);
-
     const embeddingSql =
-        vectorToSql(embedding);
+        providedEmbeddingSql ||
+        (await prepareMemoryEmbedding({
+            title: safeTitle,
+            category: safeCategory,
+            content: content.trim(),
+            metadata,
+        }));
 
     const result = await client.query(
         `
@@ -128,7 +240,9 @@ Metadata: ${JSON.stringify(metadata)}
             content,
             metadata,
             embedding,
-            importance
+            importance,
+            source_document_id,
+            source_agent_run_id
         )
         VALUES (
             $1,
@@ -138,7 +252,9 @@ Metadata: ${JSON.stringify(metadata)}
             $5,
             $6::JSONB,
             $7::VECTOR(1536),
-            $8
+            $8,
+            $9,
+            $10
         )
         RETURNING
             id,
@@ -149,6 +265,8 @@ Metadata: ${JSON.stringify(metadata)}
             content,
             metadata,
             importance,
+            source_document_id,
+            source_agent_run_id,
             created_at,
             updated_at
         `,
@@ -161,6 +279,8 @@ Metadata: ${JSON.stringify(metadata)}
             JSON.stringify(metadata),
             embeddingSql,
             safeImportance,
+            sourceDocumentId,
+            sourceAgentRunId,
         ]
     );
 
@@ -179,6 +299,8 @@ export async function createIssueRecord({
     category = "general",
     suspectedCause = "",
     recommendedNextStep = "",
+    sourceDocumentId = null,
+    sourceAgentRunId = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -199,7 +321,9 @@ export async function createIssueRecord({
             priority,
             category,
             suspected_cause,
-            recommended_next_step
+            recommended_next_step,
+            source_document_id,
+            source_agent_run_id
         )
         VALUES (
             $1,
@@ -209,7 +333,9 @@ export async function createIssueRecord({
             $4,
             $5,
             $6,
-            $7
+            $7,
+            $8,
+            $9
         )
         RETURNING *
         `,
@@ -221,6 +347,8 @@ export async function createIssueRecord({
             category || "general",
             suspectedCause?.trim() || "",
             recommendedNextStep?.trim() || "",
+            sourceDocumentId,
+            sourceAgentRunId,
         ]
     );
 
@@ -241,6 +369,8 @@ export async function createProjectRecord({
     diyDifficulty = "unknown",
     safetyNotes = "",
     tasks = [],
+    sourceDocumentId = null,
+    sourceAgentRunId = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -262,7 +392,9 @@ export async function createProjectRecord({
             estimated_cost_low,
             estimated_cost_high,
             diy_difficulty,
-            safety_notes
+            safety_notes,
+            source_document_id,
+            source_agent_run_id
         )
         VALUES (
             $1,
@@ -273,7 +405,9 @@ export async function createProjectRecord({
             $5,
             $6,
             $7,
-            $8
+            $8,
+            $9,
+            $10
         )
         RETURNING *
         `,
@@ -286,6 +420,8 @@ export async function createProjectRecord({
             estimatedCostHigh ?? 0,
             diyDifficulty || "unknown",
             safetyNotes?.trim() || "",
+            sourceDocumentId,
+            sourceAgentRunId,
         ]
     );
 
@@ -352,6 +488,8 @@ export async function createAssetRecord({
     serialNumber = "",
     location = "",
     notes = "",
+    sourceDocumentId = null,
+    sourceAgentRunId = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -376,7 +514,9 @@ export async function createAssetRecord({
             model,
             serial_number,
             location,
-            notes
+            notes,
+            source_document_id,
+            source_agent_run_id
         )
         VALUES (
             $1,
@@ -386,7 +526,9 @@ export async function createAssetRecord({
             $5,
             $6,
             $7,
-            $8
+            $8,
+            $9,
+            $10
         )
         RETURNING *
         `,
@@ -399,6 +541,8 @@ export async function createAssetRecord({
             serialNumber?.trim() || "",
             location?.trim() || "",
             notes?.trim() || "",
+            sourceDocumentId,
+            sourceAgentRunId,
         ]
     );
 

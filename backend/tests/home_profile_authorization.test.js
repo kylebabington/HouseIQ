@@ -804,7 +804,7 @@ describe(
                         "Home not found",
                 });
 
-                // Only the ownership query should run.
+                // Owner-only check issues a single homes query.
                 expect(
                     mockPoolQuery
                 ).toHaveBeenCalledTimes(
@@ -939,6 +939,8 @@ describe(
                     testDatabase.profiles
                 ).toHaveLength(0);
 
+                // Owner-only check issues a single homes query
+                // and never reaches the profile mutation.
                 expect(
                     mockPoolQuery
                 ).toHaveBeenCalledTimes(

@@ -616,6 +616,37 @@ beforeEach(() => {
 
 
             // ---------------------------------------------
+            // READ MEMORY BEFORE RE-EMBED ON PATCH
+            // ---------------------------------------------
+
+            if (
+                normalizedSql.includes(
+                    "select title, category, content, metadata"
+                ) &&
+                normalizedSql.includes(
+                    "from memories"
+                )
+            ) {
+                const [
+                    memoryId,
+                    homeId,
+                ] = parameters;
+
+                const memory =
+                    testDatabase.memories.find(
+                        (candidate) =>
+                            candidate.id === memoryId &&
+                            candidate.home_id === homeId
+                    );
+
+                return {
+                    rows: memory ? [{ ...memory }] : [],
+                    rowCount: memory ? 1 : 0,
+                };
+            }
+
+
+            // ---------------------------------------------
             // UPDATE MEMORY
             // ---------------------------------------------
 
