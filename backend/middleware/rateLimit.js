@@ -1,6 +1,6 @@
 // backend/middleware/rateLimit.js
 
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 // ---------------------------------------------------------
 // RATE LIMIT KEY GENERATOR
@@ -8,10 +8,12 @@ import rateLimit from "express-rate-limit";
 //
 // Applied AFTER requireAuth, so req.auth is normally populated
 // and we can key the limit on the stable Auth0 subject instead
-// of the caller's IP address. Falling back to req.ip keeps this
-// middleware safe to use even if auth is somehow not yet applied.
+// of the caller's IP address. Falling back via ipKeyGenerator
+// keeps IPv6 clients from bypassing limits by rotating addresses
+// within the same subnet, and keeps this middleware safe even if
+// auth is somehow not yet applied.
 function keyByAuthenticatedUserOrIp(req) {
-    return req.auth?.payload?.sub || req.ip;
+    return req.auth?.payload?.sub || ipKeyGenerator(req.ip);
 }
 
 // Disabling rate limiting during automated tests keeps the test
