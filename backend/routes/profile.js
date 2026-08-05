@@ -17,6 +17,7 @@ import {
 } from "../lib/homeProfile.js";
 
 import {
+    requireHomeAccess,
     requireHomeOwnership,
 } from "../middleware/ownership.js";
 
@@ -39,7 +40,7 @@ export function createProfileRouter() {
         "/homes/:homeId/profile",
 
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
 
         async (req, res) => {
             try {
