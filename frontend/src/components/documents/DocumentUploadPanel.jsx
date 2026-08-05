@@ -217,9 +217,27 @@ function DocumentUploadPanel({
             </div>
 
             <span className="success-badge">
-              Saved
+              {documentUploadResult.proposedForReview
+                ? "Proposed"
+                : "Saved"}
             </span>
           </div>
+
+          {documentUploadResult.truncated ? (
+            <p className="error-message" role="status">
+              Document text was truncated to the first
+              50,000 characters. Later pages may not have
+              been analyzed.
+            </p>
+          ) : null}
+
+          {documentUploadResult.proposedForReview ? (
+            <p className="success-message">
+              Extracted records are proposed for your
+              review. Accept or reject them in Proposed
+              changes before they become verified home facts.
+            </p>
+          ) : null}
 
           <div className="document-summary-box">
             <strong>

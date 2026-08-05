@@ -45,6 +45,16 @@ import {
     uploadDocumentToS3,
 } from "../services/s3.js";
 
+import {
+    validateUploadMagicBytes,
+} from "../lib/fileMagic.js";
+
+import {
+    findEvidencePassage,
+    splitExtractedTextIntoChunks,
+    storeDocumentChunks,
+} from "../services/documentChunks.js";
+
 export function createDocumentsRouter(upload) {
     const router = Router();
 
@@ -415,6 +425,19 @@ export function createDocumentsRouter(upload) {
                     });
                 }
 
+                const magicCheck = validateUploadMagicBytes(
+                    req.file.buffer,
+                    req.file.mimetype
+                );
+
+                if (!magicCheck.ok) {
+                    return res.status(400).json({
+                        error:
+                            "The uploaded file type could not be verified",
+                        details: magicCheck.reason,
+                    });
+                }
+
 
                 // -------------------------------------------------
                 // 2. EXTRACT READABLE TEXT
@@ -653,6 +676,26 @@ export function createDocumentsRouter(upload) {
                 const document =
                     documentResult.rows[0];
 
+                try {
+                    const chunks =
+                        splitExtractedTextIntoChunks(
+                            extractedText
+                        );
+                    if (chunks.length > 0) {
+                        await storeDocumentChunks({
+                            client,
+                            documentId: document.id,
+                            homeId,
+                            chunks,
+                        });
+                    }
+                } catch (chunkError) {
+                    console.warn(
+                        "Document chunk storage skipped:",
+                        chunkError.message
+                    );
+                }
+
 
                 // -------------------------------------------------
                 // 7. PREPARE RESPONSE COLLECTIONS
@@ -730,6 +773,18 @@ export function createDocumentsRouter(upload) {
                             sourceDocumentId:
                                 document.id,
 
+                            verificationStatus:
+                                "proposed",
+
+                            evidencePassage:
+                                memoryInput.evidencePassage ||
+                                findEvidencePassage(
+                                    extractedText,
+                                    memoryInput.content ||
+                                        memoryInput.title ||
+                                        ""
+                                ).passage,
+
                             client,
                         });
 
@@ -758,6 +813,15 @@ export function createDocumentsRouter(upload) {
                     const issueInput of
                     issuesToCreate
                 ) {
+                    const issueEvidence =
+                        findEvidencePassage(
+                            extractedText,
+                            issueInput.evidencePassage ||
+                                issueInput.title ||
+                                issueInput.description ||
+                                ""
+                        );
+
                     const issue =
                         await createIssueRecord({
                             homeId,
@@ -782,6 +846,16 @@ export function createDocumentsRouter(upload) {
 
                             sourceDocumentId:
                                 document.id,
+
+                            verificationStatus:
+                                "proposed",
+
+                            evidencePassage:
+                                issueInput.evidencePassage ||
+                                issueEvidence.passage,
+
+                            evidencePage:
+                                issueEvidence.page,
 
                             client,
                         });
@@ -811,6 +885,15 @@ export function createDocumentsRouter(upload) {
                     const projectInput of
                     projectsToCreate
                 ) {
+                    const projectEvidence =
+                        findEvidencePassage(
+                            extractedText,
+                            projectInput.evidencePassage ||
+                                projectInput.title ||
+                                projectInput.description ||
+                                ""
+                        );
+
                     const project =
                         await createProjectRecord({
                             homeId,
@@ -846,6 +929,16 @@ export function createDocumentsRouter(upload) {
                             sourceDocumentId:
                                 document.id,
 
+                            verificationStatus:
+                                "proposed",
+
+                            evidencePassage:
+                                projectInput.evidencePassage ||
+                                projectEvidence.passage,
+
+                            evidencePage:
+                                projectEvidence.page,
+
                             client,
                         });
 
@@ -877,6 +970,14 @@ export function createDocumentsRouter(upload) {
                     const assetInput of
                     assetsToCreate
                 ) {
+                    const assetEvidence =
+                        findEvidencePassage(
+                            extractedText,
+                            assetInput.evidencePassage ||
+                                assetInput.name ||
+                                ""
+                        );
+
                     const asset =
                         await createAssetRecord({
                             homeId,
@@ -902,8 +1003,30 @@ export function createDocumentsRouter(upload) {
                             notes:
                                 assetInput.notes,
 
+                            installDate:
+                                assetInput.installDate ||
+                                null,
+
+                            purchaseDate:
+                                assetInput.purchaseDate ||
+                                null,
+
+                            warrantyExpiration:
+                                assetInput.warrantyExpiration ||
+                                null,
+
                             sourceDocumentId:
                                 document.id,
+
+                            verificationStatus:
+                                "proposed",
+
+                            evidencePassage:
+                                assetInput.evidencePassage ||
+                                assetEvidence.passage,
+
+                            evidencePage:
+                                assetEvidence.page,
 
                             client,
                         });
@@ -940,7 +1063,12 @@ export function createDocumentsRouter(upload) {
 
                 return res.status(201).json({
                     message:
-                        "Document stored and analyzed successfully",
+                        analysis.truncated
+                            ? "Document stored and analyzed successfully (text was truncated)"
+                            : "Document stored and analyzed successfully",
+
+                    truncated:
+                        Boolean(analysis.truncated),
 
                     document: {
                         id:
@@ -976,6 +1104,8 @@ export function createDocumentsRouter(upload) {
                     actionsTaken,
 
                     createdRecords,
+
+                    proposedForReview: true,
                 });
             } catch (error) {
                 // -------------------------------------------------

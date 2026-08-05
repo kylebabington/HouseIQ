@@ -27,6 +27,7 @@ import { createHomeResourcesRouter } from "./routes/homeResources.js";
 import { createHomesRouter } from "./routes/homes.js";
 import { createNeedsRouter } from "./routes/needs.js";
 import { createProfileRouter } from "./routes/profile.js";
+import { createProposalsRouter } from "./routes/proposals.js";
 import { createRecordsRouter } from "./routes/records.js";
 
 const app = express();
@@ -164,6 +165,11 @@ app.use(
 app.use(
     "/api",
     createNeedsRouter()
+);
+
+app.use(
+    "/api",
+    createProposalsRouter()
 );
 
 // ---------------------------------------------------------
