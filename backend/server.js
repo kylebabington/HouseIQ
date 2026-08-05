@@ -22,11 +22,14 @@ import {
 } from "express-oauth2-jwt-bearer";
 
 import { createAgentRouter } from "./routes/agent.js";
+import { createDemoRouter } from "./routes/demo.js";
 import { createDocumentsRouter } from "./routes/documents.js";
+import { createEquipmentRouter } from "./routes/equipment.js";
 import { createHomeResourcesRouter } from "./routes/homeResources.js";
 import { createHomesRouter } from "./routes/homes.js";
 import { createMaintenanceRouter } from "./routes/maintenance.js";
 import { createNeedsRouter } from "./routes/needs.js";
+import { createPassportRouter } from "./routes/passport.js";
 import { createProfileRouter } from "./routes/profile.js";
 import { createProposalsRouter } from "./routes/proposals.js";
 import { createRecordsRouter } from "./routes/records.js";
@@ -176,6 +179,21 @@ app.use(
 app.use(
     "/api",
     createMaintenanceRouter()
+);
+
+app.use(
+    "/api",
+    createDemoRouter()
+);
+
+app.use(
+    "/api",
+    createPassportRouter()
+);
+
+app.use(
+    "/api",
+    createEquipmentRouter()
 );
 
 // ---------------------------------------------------------
