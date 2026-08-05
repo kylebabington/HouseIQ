@@ -36,10 +36,15 @@ export function getAssetInterval(assetType) {
 }
 
 /**
- * Years since install/purchase date, or null if unknown.
+ * Years since last service (preferred), else install/purchase.
  */
 export function assetAgeYears(asset, now = new Date()) {
+    const serviceRaw =
+        asset.last_service_date ||
+        asset.lastServiceDate;
+
     const raw =
+        serviceRaw ||
         asset.install_date ||
         asset.installDate ||
         asset.purchase_date ||
@@ -96,13 +101,18 @@ export function lifecycleNeedItems(assets, now = new Date()) {
             });
         } else if (age != null && age * 12 >= interval.serviceMonths) {
             const monthsSince = Math.round(age * 12);
+            const usedService =
+                asset.last_service_date ||
+                asset.lastServiceDate;
             items.push({
                 kind: "lifecycle",
                 id: asset.id,
                 title: `${name}: service attention`,
-                reason:
-                    `Roughly ${monthsSince} months since install/purchase date; typical service interval is every ${interval.serviceMonths} months.`,
+                reason: usedService
+                    ? `Roughly ${monthsSince} months since last service; typical interval is every ${interval.serviceMonths} months.`
+                    : `Roughly ${monthsSince} months since install/purchase; typical service interval is every ${interval.serviceMonths} months.`,
                 priority: "medium",
+                confidence: usedService ? 0.75 : 0.45,
                 sourceHints: ["asset", "lifecycle"],
             });
         }
