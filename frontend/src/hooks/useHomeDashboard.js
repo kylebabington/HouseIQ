@@ -400,59 +400,108 @@ function useHomeDashboard({
       setIsLoadingNeeds(true);
       setIsLoadingAgentRuns(true);
 
-      const [
-        issuesResponse,
-        projectsResponse,
-        assetsResponse,
-        memoriesResponse,
-        documentsResponse,
-        needsResponse,
-        agentRunsResponse,
-        membersResponse,
-      ] = await Promise.all([
-        api.get(
-          `${API_URL}/homes/${homeId}/issues`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/projects`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/assets`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/memories`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/documents`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/needs`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/agent-runs`
-        ),
-
-        api.get(
-          `${API_URL}/homes/${homeId}/members`
-        ),
+      const settled = await Promise.allSettled([
+        api.get(`${API_URL}/homes/${homeId}/issues`),
+        api.get(`${API_URL}/homes/${homeId}/projects`),
+        api.get(`${API_URL}/homes/${homeId}/assets`),
+        api.get(`${API_URL}/homes/${homeId}/memories`),
+        api.get(`${API_URL}/homes/${homeId}/documents`),
+        api.get(`${API_URL}/homes/${homeId}/needs`),
+        api.get(`${API_URL}/homes/${homeId}/agent-runs`),
+        api.get(`${API_URL}/homes/${homeId}/members`),
       ]);
 
-      setIssues(issuesResponse.data);
-      setProjects(projectsResponse.data);
-      setAssets(assetsResponse.data);
-      setMemories(memoriesResponse.data);
-      setDocuments(documentsResponse.data);
-      setNeedsItems(needsResponse.data?.items || []);
-      setNeedsError("");
-      setAgentRuns(agentRunsResponse.data || []);
-      setAgentRunsError("");
-      setHomeMembers(membersResponse.data || []);
+      const [
+        issuesResult,
+        projectsResult,
+        assetsResult,
+        memoriesResult,
+        documentsResult,
+        needsResult,
+        agentRunsResult,
+        membersResult,
+      ] = settled;
+
+      const sectionErrors = [];
+
+      function applySettled(result, onSuccess, label) {
+        if (result.status === "fulfilled") {
+          onSuccess(result.value.data);
+          return;
+        }
+
+        const error = result.reason;
+        console.error(`Error loading ${label}:`, error);
+        sectionErrors.push(
+          error?.response?.data?.details ||
+            error?.response?.data?.error ||
+            `Could not load ${label}.`
+        );
+      }
+
+      applySettled(issuesResult, setIssues, "issues");
+      applySettled(projectsResult, setProjects, "projects");
+      applySettled(assetsResult, setAssets, "assets");
+      applySettled(memoriesResult, setMemories, "memories");
+      applySettled(documentsResult, setDocuments, "documents");
+
+      if (needsResult.status === "fulfilled") {
+        setNeedsItems(needsResult.value.data?.items || []);
+        setNeedsError("");
+      } else {
+        const error = needsResult.reason;
+        setNeedsError(
+          error?.response?.data?.error ||
+            "Could not load priorities."
+        );
+        console.error("Error loading needs:", error);
+      }
+
+      if (agentRunsResult.status === "fulfilled") {
+        setAgentRuns(agentRunsResult.value.data || []);
+        setAgentRunsError("");
+      } else {
+        const error = agentRunsResult.reason;
+        setAgentRunsError(
+          error?.response?.data?.error ||
+            "Could not load advice history."
+        );
+        console.error("Error loading agent runs:", error);
+      }
+
+      applySettled(
+        membersResult,
+        (data) => setHomeMembers(data || []),
+        "members"
+      );
+
+      const coreFailed = [
+        issuesResult,
+        projectsResult,
+        assetsResult,
+        memoriesResult,
+        documentsResult,
+      ].every((result) => result.status === "rejected");
+
+      if (coreFailed) {
+        setDashboardError(
+          sectionErrors[0] ||
+            "Could not load the home dashboard."
+        );
+      } else if (
+        [
+          issuesResult,
+          projectsResult,
+          assetsResult,
+          memoriesResult,
+          documentsResult,
+          membersResult,
+        ].some((result) => result.status === "rejected")
+      ) {
+        setDashboardError(
+          "Some dashboard sections could not load. Available data is shown below."
+        );
+      }
     } catch (error) {
       console.error(
         "Error refreshing dashboard:",
