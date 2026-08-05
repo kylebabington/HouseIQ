@@ -9,9 +9,15 @@ function ProvenanceLine({
   sourceFileName,
   sourceDocumentType,
   sourceDocumentId,
+  evidencePassage,
+  evidencePage,
   onOpenDocument,
 }) {
-  if (!sourceFileName && !sourceDocumentId) {
+  if (
+    !sourceFileName &&
+    !sourceDocumentId &&
+    !evidencePassage
+  ) {
     return null;
   }
 
@@ -24,23 +30,35 @@ function ProvenanceLine({
     : null;
 
   return (
-    <p className="provenance-line">
-      From{" "}
-      {sourceDocumentId && onOpenDocument ? (
-        <button
-          type="button"
-          className="provenance-link"
-          onClick={() =>
-            onOpenDocument(sourceDocumentId)
-          }
-        >
-          {label}
-        </button>
-      ) : (
-        <span>{label}</span>
+    <div className="provenance-line">
+      {(sourceFileName || sourceDocumentId) && (
+        <p>
+          From{" "}
+          {sourceDocumentId && onOpenDocument ? (
+            <button
+              type="button"
+              className="provenance-link"
+              onClick={() =>
+                onOpenDocument(sourceDocumentId)
+              }
+            >
+              {label}
+            </button>
+          ) : (
+            <span>{label}</span>
+          )}
+          {typeLabel ? ` · ${typeLabel}` : null}
+          {evidencePage
+            ? ` · p. ${evidencePage}`
+            : null}
+        </p>
       )}
-      {typeLabel ? ` · ${typeLabel}` : null}
-    </p>
+      {evidencePassage ? (
+        <p className="evidence-quote">
+          &ldquo;{evidencePassage}&rdquo;
+        </p>
+      ) : null}
+    </div>
   );
 }
 

@@ -32,7 +32,9 @@ function assetAttentionLine(asset) {
   }
 
   const raw =
-    asset.install_date || asset.purchase_date;
+    asset.last_service_date ||
+    asset.install_date ||
+    asset.purchase_date;
   if (!raw) {
     return `Typical service every ${pair[0]} mo · useful life ~${pair[1]} yr`;
   }
@@ -65,6 +67,18 @@ function createFormFromAsset(asset) {
     model: asset.model || "",
     location: asset.location || "",
     notes: asset.notes || "",
+    installDate: asset.install_date
+      ? String(asset.install_date).slice(0, 10)
+      : "",
+    purchaseDate: asset.purchase_date
+      ? String(asset.purchase_date).slice(0, 10)
+      : "",
+    warrantyExpiration: asset.warranty_expiration
+      ? String(asset.warranty_expiration).slice(0, 10)
+      : "",
+    lastServiceDate: asset.last_service_date
+      ? String(asset.last_service_date).slice(0, 10)
+      : "",
   };
 }
 
@@ -152,6 +166,18 @@ function AssetsPanel({
           notes:
             assetForm.notes.trim() ||
             null,
+
+          installDate:
+            assetForm.installDate || null,
+
+          purchaseDate:
+            assetForm.purchaseDate || null,
+
+          warrantyExpiration:
+            assetForm.warrantyExpiration || null,
+
+          lastServiceDate:
+            assetForm.lastServiceDate || null,
         }
       );
 
@@ -228,6 +254,12 @@ function AssetsPanel({
               }
               sourceDocumentId={
                 asset.source_document_id
+              }
+              evidencePassage={
+                asset.evidence_passage
+              }
+              evidencePage={
+                asset.evidence_page
               }
               onOpenDocument={onOpenDocument}
             />
@@ -315,6 +347,64 @@ function AssetsPanel({
                       setAssetForm({
                         ...assetForm,
                         notes: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span>Install date</span>
+                  <input
+                    type="date"
+                    value={assetForm.installDate}
+                    onChange={(event) =>
+                      setAssetForm({
+                        ...assetForm,
+                        installDate: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span>Purchase date</span>
+                  <input
+                    type="date"
+                    value={assetForm.purchaseDate}
+                    onChange={(event) =>
+                      setAssetForm({
+                        ...assetForm,
+                        purchaseDate: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span>Warranty expiration</span>
+                  <input
+                    type="date"
+                    value={assetForm.warrantyExpiration}
+                    onChange={(event) =>
+                      setAssetForm({
+                        ...assetForm,
+                        warrantyExpiration:
+                          event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span>Last service date</span>
+                  <input
+                    type="date"
+                    value={assetForm.lastServiceDate}
+                    onChange={(event) =>
+                      setAssetForm({
+                        ...assetForm,
+                        lastServiceDate:
+                          event.target.value,
                       })
                     }
                   />

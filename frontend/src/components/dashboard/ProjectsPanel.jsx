@@ -12,6 +12,8 @@ import {
   formatLabel,
 } from "../../utils/formatters.js";
 
+import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+
 
 // ---------------------------------------------------------
 // API CONFIGURATION
@@ -35,6 +37,7 @@ function ProjectsPanel({
   projects,
   homeId,
   onRecordsChanged,
+  onOpenDocument,
 }) {
   // Tracks which project or task is currently saving, so its
   // control can disable itself while the request is in flight.
@@ -171,6 +174,25 @@ function ProjectsPanel({
               )}
             </span>
           </div>
+
+          <ProvenanceLine
+            sourceFileName={
+              project.source_file_name
+            }
+            sourceDocumentType={
+              project.source_document_type
+            }
+            sourceDocumentId={
+              project.source_document_id
+            }
+            evidencePassage={
+              project.evidence_passage
+            }
+            evidencePage={
+              project.evidence_page
+            }
+            onOpenDocument={onOpenDocument}
+          />
 
           {project.description && (
             <p className="record-description">
