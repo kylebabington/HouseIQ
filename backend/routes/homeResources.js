@@ -104,8 +104,9 @@ export function createHomeResourcesRouter() {
           FROM memories
           LEFT JOIN documents
             ON documents.id = memories.source_document_id
-          WHERE memories.home_id = $1
-          ORDER BY memories.created_at DESC
+                        WHERE memories.home_id = $1
+                          AND COALESCE(memories.verification_status, 'accepted') <> 'rejected'
+                        ORDER BY memories.created_at DESC
           `,
                     [homeId]
                 );
@@ -202,6 +203,7 @@ export function createHomeResourcesRouter() {
                 LEFT JOIN documents
                     ON documents.id = home_issues.source_document_id
                 WHERE home_issues.home_id = $1
+                  AND COALESCE(home_issues.verification_status, 'accepted') <> 'rejected'
                 ORDER BY
                     CASE home_issues.priority
                         WHEN 'urgent' THEN 1
@@ -256,6 +258,7 @@ export function createHomeResourcesRouter() {
                 LEFT JOIN documents
                     ON documents.id = home_projects.source_document_id
                 WHERE home_projects.home_id = $1
+                  AND COALESCE(home_projects.verification_status, 'accepted') <> 'rejected'
                 ORDER BY home_projects.created_at DESC
                 `,
                     [homeId]
@@ -346,6 +349,7 @@ export function createHomeResourcesRouter() {
                 LEFT JOIN documents
                     ON documents.id = home_assets.source_document_id
                 WHERE home_assets.home_id = $1
+                  AND COALESCE(home_assets.verification_status, 'accepted') <> 'rejected'
                 ORDER BY home_assets.created_at DESC
                 `,
                     [homeId]
@@ -425,6 +429,10 @@ export function createHomeResourcesRouter() {
                     serialNumber,
                     location,
                     notes,
+                    installDate,
+                    purchaseDate,
+                    warrantyExpiration,
+                    lastServiceDate,
                 } = req.body || {};
 
                 const asset = await createAssetRecord({
@@ -436,6 +444,12 @@ export function createHomeResourcesRouter() {
                     serialNumber,
                     location,
                     notes,
+                    installDate: installDate || null,
+                    purchaseDate: purchaseDate || null,
+                    warrantyExpiration:
+                        warrantyExpiration || null,
+                    lastServiceDate:
+                        lastServiceDate || null,
                 });
 
                 return res.status(201).json(asset);
