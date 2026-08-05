@@ -45,6 +45,27 @@ async function runSchema() {
 
         await pool.query(schemaSql);
 
+        const migrationsDir = path.join(
+            __dirname,
+            "migrations"
+        );
+
+        if (fs.existsSync(migrationsDir)) {
+            const migrationFiles = fs
+                .readdirSync(migrationsDir)
+                .filter((name) => name.endsWith(".sql"))
+                .sort();
+
+            for (const fileName of migrationFiles) {
+                console.log(`Running migration ${fileName}...`);
+                const sql = fs.readFileSync(
+                    path.join(migrationsDir, fileName),
+                    "utf8"
+                );
+                await pool.query(sql);
+            }
+        }
+
         console.log("Schema created successfully.");
     } catch (error) {
         console.error("Failed to run schema:");
