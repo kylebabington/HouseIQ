@@ -9,6 +9,15 @@ import {
 
 import api from "../api.js";
 
+import {
+  createDocumentsSlice,
+  createHomesSlice,
+  createHouseAgentSlice,
+  createHouseholdMembersSlice,
+  createMaintenancePlanSlice,
+  createRecordsSlice,
+} from "./domains/useHomesState.js";
+
 
 // ---------------------------------------------------------
 // API CONFIGURATION
@@ -34,6 +43,15 @@ function useHomeDashboard({
   isAuthenticated,
   isAuthLoading,
 }) {
+  const domainSlices = {
+    homes: createHomesSlice({ setHomesError: () => {} }),
+    records: createRecordsSlice(),
+    documents: createDocumentsSlice(),
+    agent: createHouseAgentSlice(),
+    members: createHouseholdMembersSlice(),
+    maintenance: createMaintenancePlanSlice(),
+  };
+
   // -----------------------------------------------------
   // HOME STATE
   // -----------------------------------------------------
@@ -191,6 +209,16 @@ function useHomeDashboard({
     useState(false);
   const [agentRunsError, setAgentRunsError] =
     useState("");
+
+  const [proposals, setProposals] = useState({
+    memories: [],
+    issues: [],
+    projects: [],
+    assets: [],
+    total: 0,
+  });
+  const [isUpdatingProposal, setIsUpdatingProposal] =
+    useState(false);
 
   const [homeMembers, setHomeMembers] = useState([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -409,6 +437,7 @@ function useHomeDashboard({
         api.get(`${API_URL}/homes/${homeId}/needs`),
         api.get(`${API_URL}/homes/${homeId}/agent-runs`),
         api.get(`${API_URL}/homes/${homeId}/members`),
+        api.get(`${API_URL}/homes/${homeId}/proposals`),
       ]);
 
       const [
@@ -420,6 +449,7 @@ function useHomeDashboard({
         needsResult,
         agentRunsResult,
         membersResult,
+        proposalsResult,
       ] = settled;
 
       const sectionErrors = [];
@@ -474,6 +504,18 @@ function useHomeDashboard({
         (data) => setHomeMembers(data || []),
         "members"
       );
+
+      if (proposalsResult.status === "fulfilled") {
+        setProposals(
+          proposalsResult.value.data || {
+            memories: [],
+            issues: [],
+            projects: [],
+            assets: [],
+            total: 0,
+          }
+        );
+      }
 
       const coreFailed = [
         issuesResult,
@@ -764,6 +806,12 @@ function useHomeDashboard({
         response.data
       );
 
+      if (response.data?.truncated) {
+        setDocumentUploadError(
+          "Document analyzed, but text was truncated to the first 50,000 characters. Later pages may not be included."
+        );
+      }
+
       // Clear the selected file after success.
       setSelectedDocumentFile(null);
 
@@ -893,7 +941,7 @@ function useHomeDashboard({
     setInviteSuccess("");
 
     try {
-      await api.post(
+      const response = await api.post(
         `${API_URL}/homes/${selectedHome.id}/members`,
         {
           invitedEmail: inviteEmail.trim(),
@@ -901,8 +949,12 @@ function useHomeDashboard({
         }
       );
 
+      const tokenHint = response.data?.inviteToken
+        ? ` Share token (expires in ${response.data.inviteExpiresInDays || 14} days): ${response.data.inviteToken}`
+        : "";
+
       setInviteSuccess(
-        `Invite saved for ${inviteEmail.trim()}.`
+        `Invite saved for ${inviteEmail.trim()}.${tokenHint}`
       );
       setInviteEmail("");
 
@@ -1054,6 +1106,65 @@ function useHomeDashboard({
   // EVERYTHING THE APP SHELL NEEDS
   // -----------------------------------------------------
 
+  async function acceptProposal(kind, recordId) {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    try {
+      setIsUpdatingProposal(true);
+      await api.post(
+        `${API_URL}/homes/${selectedHome.id}/proposals/${kind}/${recordId}/accept`
+      );
+      await refreshHomeDashboard(selectedHome.id);
+    } catch (error) {
+      console.error("Accept proposal failed:", error);
+    } finally {
+      setIsUpdatingProposal(false);
+    }
+  }
+
+  async function rejectProposal(kind, recordId) {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    try {
+      setIsUpdatingProposal(true);
+      await api.post(
+        `${API_URL}/homes/${selectedHome.id}/proposals/${kind}/${recordId}/reject`
+      );
+      await refreshHomeDashboard(selectedHome.id);
+    } catch (error) {
+      console.error("Reject proposal failed:", error);
+    } finally {
+      setIsUpdatingProposal(false);
+    }
+  }
+
+  async function acceptAllProposals() {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    try {
+      setIsUpdatingProposal(true);
+      await api.post(
+        `${API_URL}/homes/${selectedHome.id}/proposals/accept-all`
+      );
+      await refreshHomeDashboard(selectedHome.id);
+    } catch (error) {
+      console.error("Accept all proposals failed:", error);
+    } finally {
+      setIsUpdatingProposal(false);
+    }
+  }
+
+
+  // -----------------------------------------------------
+  // PUBLIC API
+  // -----------------------------------------------------
+
   return {
     // Homes
     homes,
@@ -1066,6 +1177,7 @@ function useHomeDashboard({
     createHomeError,
     deleteHome,
     isHomeOwner,
+    fetchHomes,
 
     // Dashboard records
     issues,
@@ -1139,6 +1251,13 @@ function useHomeDashboard({
     setMemoryForm,
     createMemory,
     memoryFormError,
+
+    domainSlices,
+    proposals,
+    isUpdatingProposal,
+    acceptProposal,
+    rejectProposal,
+    acceptAllProposals,
   };
 }
 

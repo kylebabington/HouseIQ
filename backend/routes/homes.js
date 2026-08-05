@@ -19,6 +19,10 @@ import {
     isValidUuid,
 } from "../lib/validation.js";
 
+import {
+    createInviteToken,
+} from "./demo.js";
+
 export function createHomesRouter() {
     const router = Router();
 
@@ -397,9 +401,54 @@ export function createHomesRouter() {
 
                 // Pending invite: store email with a placeholder
                 // member id until redeem attaches the real sub.
+                // Also write a tokenized home_invites row when possible.
                 const memberId =
                     safeMemberId ||
                     `pending|${safeEmail}`;
+
+                const inviterId =
+                    getAuthenticatedUserId(req);
+
+                let inviteToken = null;
+
+                if (safeEmail && !safeMemberId) {
+                    try {
+                        const { token, tokenHash } =
+                            createInviteToken();
+                        inviteToken = token;
+                        const expiresAt = new Date(
+                            Date.now() +
+                                14 * 24 * 60 * 60 * 1000
+                        );
+
+                        await pool.query(
+                            `
+                            INSERT INTO home_invites (
+                                home_id,
+                                email,
+                                role,
+                                token_hash,
+                                expires_at,
+                                invited_by
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6)
+                            `,
+                            [
+                                homeId,
+                                safeEmail,
+                                safeRole,
+                                tokenHash,
+                                expiresAt.toISOString(),
+                                inviterId,
+                            ]
+                        );
+                    } catch (inviteError) {
+                        console.warn(
+                            "home_invites insert skipped:",
+                            inviteError.message
+                        );
+                    }
+                }
 
                 const result = await pool.query(
                     `
@@ -427,9 +476,13 @@ export function createHomesRouter() {
                     ]
                 );
 
-                return res.status(201).json(
-                    result.rows[0]
-                );
+                return res.status(201).json({
+                    ...result.rows[0],
+                    inviteToken,
+                    inviteExpiresInDays: inviteToken
+                        ? 14
+                        : null,
+                });
             } catch (error) {
                 console.error(
                     "Error inviting member:",
