@@ -1,63 +1,139 @@
 // backend/lib/climateZones.js
 //
-// Coarse US ZIP-prefix → climate band mapping for seasonal
-// "what your house needs" hints. Not a live weather API.
-
-const ZIP_PREFIX_BANDS = [
-    // Cold / frost-heavy
-    { prefixes: ["0", "1", "2"], band: "cold_northeast", frostMonths: [11, 12, 1, 2, 3], heatMonths: [6, 7, 8] },
-    { prefixes: ["4", "5"], band: "cold_midwest", frostMonths: [11, 12, 1, 2, 3], heatMonths: [6, 7, 8] },
-    { prefixes: ["8", "9"], band: "mountain_west", frostMonths: [10, 11, 12, 1, 2, 3, 4], heatMonths: [6, 7, 8] },
-    // Mixed / temperate
-    { prefixes: ["3"], band: "southeast", frostMonths: [12, 1, 2], heatMonths: [5, 6, 7, 8, 9] },
-    { prefixes: ["6", "7"], band: "south_central", frostMonths: [12, 1], heatMonths: [5, 6, 7, 8, 9] },
-];
+// Climate localization for seasonal maintenance hints.
+// Prefer US state → IECC-like band; fall back to ZIP when state
+// is unknown. Not a live weather API.
 
 const MONTH_NAMES = [
     "", "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 ];
 
-/**
- * Resolves a coarse climate band from a US postal code.
- */
-export function resolveClimateFromPostalCode(postalCode) {
-    if (!postalCode || typeof postalCode !== "string") {
-        return null;
-    }
-
-    const digits = postalCode.replace(/\D/g, "");
-
-    if (digits.length < 1) {
-        return null;
-    }
-
-    const first = digits[0];
-
-    for (const entry of ZIP_PREFIX_BANDS) {
-        if (entry.prefixes.includes(first)) {
-            return {
-                band: entry.band,
-                frostMonths: entry.frostMonths,
-                heatMonths: entry.heatMonths,
-                postalCode: digits.slice(0, 5),
-            };
-        }
-    }
-
-    return {
-        band: "temperate_general",
+const BANDS = {
+    cold: {
+        frostMonths: [11, 12, 1, 2, 3],
+        heatMonths: [6, 7, 8],
+    },
+    mixed_humid: {
+        frostMonths: [12, 1, 2],
+        heatMonths: [6, 7, 8, 9],
+    },
+    hot_humid: {
+        frostMonths: [1],
+        heatMonths: [5, 6, 7, 8, 9],
+    },
+    hot_dry: {
+        frostMonths: [],
+        heatMonths: [5, 6, 7, 8, 9],
+    },
+    mixed_dry: {
         frostMonths: [12, 1, 2],
         heatMonths: [6, 7, 8],
-        postalCode: digits.slice(0, 5),
+    },
+    marine: {
+        frostMonths: [12, 1, 2],
+        heatMonths: [7, 8],
+    },
+};
+
+const STATE_BANDS = {
+    AK: "cold", ME: "cold", NH: "cold", VT: "cold",
+    NY: "cold", MI: "cold", WI: "cold", MN: "cold",
+    ND: "cold", SD: "cold", MT: "cold", WY: "cold",
+    ID: "cold", CO: "cold", UT: "cold",
+    MA: "mixed_humid", CT: "mixed_humid", RI: "mixed_humid",
+    PA: "mixed_humid", NJ: "mixed_humid", OH: "mixed_humid",
+    IN: "mixed_humid", IL: "mixed_humid", IA: "mixed_humid",
+    MO: "mixed_humid", KY: "mixed_humid", WV: "mixed_humid",
+    VA: "mixed_humid", MD: "mixed_humid", DE: "mixed_humid",
+    NC: "mixed_humid", TN: "mixed_humid",
+    SC: "hot_humid", GA: "hot_humid", FL: "hot_humid",
+    AL: "hot_humid", MS: "hot_humid", LA: "hot_humid",
+    AR: "hot_humid", TX: "hot_humid", HI: "hot_humid",
+    AZ: "hot_dry", NV: "hot_dry", NM: "hot_dry",
+    CA: "mixed_dry", OR: "marine", WA: "marine",
+    OK: "mixed_humid", KS: "mixed_humid", NE: "cold",
+};
+
+// ZIP first-digit fallback when state is missing (coarse).
+const ZIP_PREFIX_FALLBACK = {
+    "0": "cold",
+    "1": "cold",
+    "2": "mixed_humid",
+    "3": "hot_humid",
+    "4": "cold",
+    "5": "cold",
+    "6": "mixed_humid",
+    "7": "hot_humid",
+    "8": "mixed_dry",
+    "9": "mixed_dry",
+};
+
+function bandDefinition(band) {
+    return BANDS[band] || BANDS.mixed_humid;
+}
+
+/**
+ * Resolves climate from state (preferred) and/or postal code.
+ */
+export function resolveClimate({
+    state,
+    postalCode,
+} = {}) {
+    const normalizedState =
+        typeof state === "string"
+            ? state.trim().toUpperCase().slice(0, 2)
+            : "";
+
+    const digits =
+        typeof postalCode === "string"
+            ? postalCode.replace(/\D/g, "")
+            : "";
+
+    let band = null;
+    let source = null;
+
+    if (normalizedState && STATE_BANDS[normalizedState]) {
+        band = STATE_BANDS[normalizedState];
+        source = "state";
+    } else if (digits.length >= 1) {
+        band = ZIP_PREFIX_FALLBACK[digits[0]] || "mixed_humid";
+        source = "zip_prefix";
+    } else {
+        return null;
+    }
+
+    const definition = bandDefinition(band);
+
+    return {
+        band,
+        source,
+        frostMonths: definition.frostMonths,
+        heatMonths: definition.heatMonths,
+        state: normalizedState || null,
+        postalCode: digits.slice(0, 5) || null,
     };
+}
+
+/** @deprecated Prefer resolveClimate({ state, postalCode }) */
+export function resolveClimateFromPostalCode(postalCode) {
+    return resolveClimate({ postalCode });
 }
 
 /**
  * One-line season context for the agent prompt.
  */
-export function formatLocalSeasonLine(postalCode, now = new Date()) {
-    const climate = resolveClimateFromPostalCode(postalCode);
+export function formatLocalSeasonLine(
+    postalCodeOrOptions,
+    now = new Date()
+) {
+    const climate =
+        typeof postalCodeOrOptions === "string" ||
+        postalCodeOrOptions == null
+            ? resolveClimate({
+                postalCode: postalCodeOrOptions,
+            })
+            : resolveClimate(postalCodeOrOptions);
 
     if (!climate) {
         return null;
@@ -75,16 +151,28 @@ export function formatLocalSeasonLine(postalCode, now = new Date()) {
         seasonHint = "peak heat season";
     }
 
-    return `Local season context (ZIP ${climate.postalCode}, band ${climate.band}): ${MONTH_NAMES[month]} is ${seasonHint}. Prefer advice that fits this home's climate and known systems.`;
+    const where =
+        climate.state ||
+        climate.postalCode ||
+        "unknown location";
+
+    return `Local season context (${where}, band ${climate.band} via ${climate.source}): ${MONTH_NAMES[month]} is ${seasonHint}. Prefer advice that fits this home's climate and known systems.`;
 }
 
 /**
- * Seasonal need reasons for the /needs board.
+ * Seasonal maintenance hint strings for the needs board.
  */
-export function seasonalNeedHints(profile, now = new Date()) {
-    const climate = resolveClimateFromPostalCode(
-        profile?.postal_code || profile?.postalCode
-    );
+export function seasonalNeedHints(
+    postalCodeOrOptions,
+    now = new Date()
+) {
+    const climate =
+        typeof postalCodeOrOptions === "string" ||
+        postalCodeOrOptions == null
+            ? resolveClimate({
+                postalCode: postalCodeOrOptions,
+            })
+            : resolveClimate(postalCodeOrOptions);
 
     if (!climate) {
         return [];
@@ -94,41 +182,44 @@ export function seasonalNeedHints(profile, now = new Date()) {
     const hints = [];
 
     if (climate.frostMonths.includes(month)) {
-        if (profile?.heating_type || profile?.heatingType) {
-            hints.push({
-                kind: "seasonal",
-                id: `seasonal-heat-${climate.band}`,
-                title: "Prepare heating for cold weather",
-                reason:
-                    `Frost-season months for ZIP ${climate.postalCode} include now. Confirm filters, vents, and any open heating issues before deep cold.`,
-                priority: "high",
-                sourceHints: ["profile", "climate"],
-            });
-        } else {
-            hints.push({
-                kind: "seasonal",
-                id: `seasonal-winter-${climate.band}`,
-                title: "Winterize open exterior work",
-                reason:
-                    `Cold season is active for ZIP ${climate.postalCode}. Prioritize open roof, plumbing, and exterior issues.`,
-                priority: "medium",
-                sourceHints: ["climate"],
-            });
-        }
+        hints.push({
+            id: "seasonal-freeze",
+            title: "Protect pipes and outdoor spigots from freeze",
+            priority: "high",
+            reason:
+                "Local climate is in frost season — winterize exposed plumbing.",
+            timingBucket: "30_days",
+        });
+        hints.push({
+            id: "seasonal-heating",
+            title: "Confirm heating system is serviced",
+            priority: "medium",
+            reason:
+                "Cold-season demand is high; service overdue systems before peak cold.",
+            timingBucket: "30_days",
+        });
     }
 
     if (climate.heatMonths.includes(month)) {
-        if (profile?.cooling_type || profile?.coolingType) {
-            hints.push({
-                kind: "seasonal",
-                id: `seasonal-cool-${climate.band}`,
-                title: "Service cooling before peak heat",
-                reason:
-                    `Heat season is active for ZIP ${climate.postalCode}. Check cooling system readiness and open HVAC issues.`,
-                priority: "high",
-                sourceHints: ["profile", "climate"],
-            });
-        }
+        hints.push({
+            id: "seasonal-cooling",
+            title: "Check cooling and attic ventilation",
+            priority: "medium",
+            reason:
+                "Peak heat season — clogged filters and poor airflow raise failure risk.",
+            timingBucket: "90_days",
+        });
+    }
+
+    if ([3, 4, 9, 10].includes(month)) {
+        hints.push({
+            id: "seasonal-gutters",
+            title: "Clear gutters and downspouts",
+            priority: "medium",
+            reason:
+                "Shoulder season is ideal for drainage maintenance before storms.",
+            timingBucket: "90_days",
+        });
     }
 
     return hints;

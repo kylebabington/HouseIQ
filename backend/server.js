@@ -25,6 +25,7 @@ import { createAgentRouter } from "./routes/agent.js";
 import { createDocumentsRouter } from "./routes/documents.js";
 import { createHomeResourcesRouter } from "./routes/homeResources.js";
 import { createHomesRouter } from "./routes/homes.js";
+import { createMaintenanceRouter } from "./routes/maintenance.js";
 import { createNeedsRouter } from "./routes/needs.js";
 import { createProfileRouter } from "./routes/profile.js";
 import { createProposalsRouter } from "./routes/proposals.js";
@@ -170,6 +171,11 @@ app.use(
 app.use(
     "/api",
     createProposalsRouter()
+);
+
+app.use(
+    "/api",
+    createMaintenanceRouter()
 );
 
 // ---------------------------------------------------------
