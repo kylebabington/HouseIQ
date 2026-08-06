@@ -29,6 +29,13 @@ function skipInTestEnvironment() {
 //
 // Protects the HouseIQ agent endpoint, which triggers an OpenAI
 // embedding call plus a chat completion on every request.
+//
+// Store is process-local by default. For multi-instance deploys,
+// wire a Redis store when REDIS_URL is configured.
+function createOptionalStore() {
+    return undefined;
+}
+
 export const askRateLimit = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 30,
@@ -36,6 +43,7 @@ export const askRateLimit = rateLimit({
     legacyHeaders: false,
     keyGenerator: keyByAuthenticatedUserOrIp,
     skip: skipInTestEnvironment,
+    store: createOptionalStore(),
     message: {
         error:
             "Too many questions sent to HouseIQ. Please try again in a few minutes.",
