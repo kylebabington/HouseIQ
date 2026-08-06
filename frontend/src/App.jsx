@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useState,
 } from "react";
 
 import {
@@ -11,6 +12,7 @@ import {
 import {
   setAccessTokenProvider,
 } from "./api.js";
+import api from "./api.js";
 
 import useHomeDashboard from "./hooks/useHomeDashboard.js";
 
@@ -24,6 +26,8 @@ import ManualMemoryPanel from "./components/memories/ManualMemoryPanel.jsx";
 import HomeProfile from "./components/home-profile/HomeProfile.jsx";
 import OnboardingGate from "./components/home-profile/OnboardingGate.jsx";
 import ShareHomePanel from "./components/home-profile/ShareHomePanel.jsx";
+import PassportPanel from "./components/home-profile/PassportPanel.jsx";
+import TimelinePanel from "./components/dashboard/TimelinePanel.jsx";
 
 import IssuesPanel from "./components/dashboard/IssuesPanel.jsx";
 import ProjectsPanel from "./components/dashboard/ProjectsPanel.jsx";
@@ -31,6 +35,7 @@ import AssetsPanel from "./components/dashboard/AssetsPanel.jsx";
 import MemoriesPanel from "./components/dashboard/MemoriesPanel.jsx";
 import DocumentsPanel from "./components/dashboard/DocumentsPanel.jsx";
 import NeedsBoard from "./components/dashboard/NeedsBoard.jsx";
+import ProposalsPanel from "./components/dashboard/ProposalsPanel.jsx";
 
 import { formatLabel } from "./utils/formatters.js";
 
@@ -148,6 +153,7 @@ function App() {
     createHomeError,
     deleteHome,
     isHomeOwner,
+    fetchHomes,
 
     issues,
     projects,
@@ -212,6 +218,12 @@ function App() {
     setMemoryForm,
     createMemory,
     memoryFormError,
+
+    proposals,
+    isUpdatingProposal,
+    acceptProposal,
+    rejectProposal,
+    acceptAllProposals,
   } = useHomeDashboard({
     isAuthenticated,
     isAuthLoading,
@@ -226,14 +238,77 @@ function App() {
   // call this after a PATCH or DELETE succeeds so the
   // dashboard reflects the human's correction immediately.
   //
+  const [timelineEvents, setTimelineEvents] =
+    useState([]);
+  const [timelineError, setTimelineError] =
+    useState("");
+  const [isLoadingTimeline, setIsLoadingTimeline] =
+    useState(false);
+
+  async function refreshTimeline() {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    try {
+      setIsLoadingTimeline(true);
+      setTimelineError("");
+      const response = await api.get(
+        `/homes/${selectedHome.id}/timeline`
+      );
+      setTimelineEvents(response.data?.events || []);
+    } catch (error) {
+      setTimelineError(
+        error.response?.data?.error ||
+          "Could not load timeline"
+      );
+    } finally {
+      setIsLoadingTimeline(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!(selectedHome?.id && activeTab === "profile")) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setIsLoadingTimeline(true);
+        setTimelineError("");
+        const response = await api.get(
+          `/homes/${selectedHome.id}/timeline`
+        );
+        if (!cancelled) {
+          setTimelineEvents(response.data?.events || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setTimelineError(
+            error.response?.data?.error ||
+              "Could not load timeline"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingTimeline(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedHome?.id, activeTab]);
+
   async function refreshDashboardForSelectedHome() {
     if (!selectedHome?.id) {
       return;
     }
 
-    await refreshHomeDashboard(
-      selectedHome.id
-    );
+    await refreshHomeDashboard(selectedHome.id);
   }
 
 
@@ -338,6 +413,13 @@ function App() {
               onInvite={inviteHomeMember}
               onRemove={removeHomeMember}
               isBusy={isInviting}
+            />
+            <PassportPanel homeId={selectedHome?.id} />
+            <TimelinePanel
+              events={timelineEvents}
+              isLoading={isLoadingTimeline}
+              error={timelineError}
+              onRefresh={refreshTimeline}
             />
           </>
         );
@@ -733,10 +815,42 @@ function App() {
                   Upload an inspection report,
                   then ask what to do before
                   winter — HouseIQ will use your
-                  profile and documents.
+                  profile and documents. Or seed
+                  the Indianapolis Ranch demo home.
                 </p>
 
                 <div className="demo-cta-buttons">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={async () => {
+                      try {
+                        const response =
+                          await api.post(
+                            "/demo/seed-indianapolis-ranch"
+                          );
+                        await fetchHomes();
+                        if (response.data?.home) {
+                          selectHome(
+                            response.data.home
+                          );
+                        }
+                      } catch (error) {
+                        console.error(
+                          "Demo seed failed:",
+                          error
+                        );
+                        window.alert(
+                          error.response?.data
+                            ?.error ||
+                            "Could not seed demo home"
+                        );
+                      }
+                    }}
+                  >
+                    Seed Indianapolis Ranch
+                  </button>
+
                   <button
                     type="button"
                     className="secondary-button"
@@ -770,6 +884,42 @@ function App() {
                 isLoading={isLoadingNeeds}
                 error={needsError}
                 onSelectNeed={handleSelectNeed}
+              />
+
+              {proposals?.total > 0 && (
+                <div className="proposals-banner">
+                  <p>
+                    HouseIQ proposed {proposals.total}{" "}
+                    change
+                    {proposals.total === 1 ? "" : "s"} from
+                    recent analysis. Review before they become
+                    verified home facts.
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      document
+                        .getElementById(
+                          "houseiq-proposals-panel"
+                        )
+                        ?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        })
+                    }
+                  >
+                    Review proposals
+                  </button>
+                </div>
+              )}
+
+              <ProposalsPanel
+                proposals={proposals}
+                isBusy={isUpdatingProposal}
+                onAccept={acceptProposal}
+                onReject={rejectProposal}
+                onAcceptAll={acceptAllProposals}
               />
 
               {documentOpenError ? (

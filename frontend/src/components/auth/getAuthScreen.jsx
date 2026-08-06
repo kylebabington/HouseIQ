@@ -3,17 +3,9 @@
 import {
   AuthErrorScreen,
   AuthLoadingScreen,
-  LoginScreen,
+  LoggedOutFlow,
 } from "./AuthScreens.jsx";
 
-
-// ---------------------------------------------------------
-// CHOOSE WHICH AUTHENTICATION SCREEN TO DISPLAY
-// ---------------------------------------------------------
-//
-// Returns null once the user is signed in, which tells the
-// caller to keep rendering the normal application shell.
-//
 function getAuthScreen({
   isAuthLoading,
   authError,
@@ -28,25 +20,18 @@ function getAuthScreen({
     return (
       <AuthErrorScreen
         authError={authError}
-        loginWithRedirect={
-          loginWithRedirect
-        }
+        loginWithRedirect={loginWithRedirect}
       />
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <LoginScreen
-        loginWithRedirect={
-          loginWithRedirect
-        }
-      />
+      <LoggedOutFlow loginWithRedirect={loginWithRedirect} />
     );
   }
 
   return null;
 }
-
 
 export default getAuthScreen;
