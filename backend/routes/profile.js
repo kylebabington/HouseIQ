@@ -82,6 +82,10 @@ export function createProfileRouter() {
                             home_profiles.garage_spaces,
                             home_profiles.lot_size_acres,
 
+                            home_profiles.postal_code,
+                            home_profiles.city,
+                            home_profiles.state,
+
                             home_profiles.onboarding_status,
                             home_profiles.onboarding_step,
                             home_profiles.metadata,
