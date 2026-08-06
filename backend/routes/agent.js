@@ -239,6 +239,7 @@ export function createAgentRouter() {
                     FROM home_issues
                     WHERE home_id = $1
                       AND status NOT IN ('resolved', 'closed')
+                      AND COALESCE(verification_status, 'accepted') = 'accepted'
                     ORDER BY updated_at DESC
                     LIMIT 5
                     `,
@@ -251,6 +252,7 @@ export function createAgentRouter() {
                     FROM home_projects
                     WHERE home_id = $1
                       AND status NOT IN ('completed', 'cancelled')
+                      AND COALESCE(verification_status, 'accepted') = 'accepted'
                     ORDER BY updated_at DESC
                     LIMIT 3
                     `,
@@ -262,6 +264,7 @@ export function createAgentRouter() {
                     SELECT *
                     FROM home_assets
                     WHERE home_id = $1
+                      AND COALESCE(verification_status, 'accepted') = 'accepted'
                     ORDER BY updated_at DESC
                     LIMIT 8
                     `,
@@ -278,11 +281,15 @@ export function createAgentRouter() {
                         metadata,
                         importance,
                         created_at,
+                        evidence_passage,
+                        evidence_page,
+                        source_document_id,
                         embedding <=> $2::VECTOR(1536)
                             AS similarity_distance
                     FROM memories
                     WHERE home_id = $1
                       AND embedding IS NOT NULL
+                      AND COALESCE(verification_status, 'accepted') = 'accepted'
                     ORDER BY
                         embedding <=> $2::VECTOR(1536)
                     LIMIT 8
@@ -294,7 +301,30 @@ export function createAgentRouter() {
                     ),
                 ]);
 
-                relevantMemories = memoriesResult.rows;
+                // Drop weak matches so Ask is allowed to use zero memories.
+                // Keep rows with missing distance (legacy / test fakes).
+                const MAX_MEMORY_DISTANCE = 0.45;
+                relevantMemories = memoriesResult.rows.filter(
+                    (row) => {
+                        if (
+                            row.similarity_distance ===
+                                null ||
+                            row.similarity_distance ===
+                                undefined
+                        ) {
+                            return true;
+                        }
+
+                        const distance = Number(
+                            row.similarity_distance
+                        );
+
+                        return (
+                            Number.isFinite(distance) &&
+                            distance <= MAX_MEMORY_DISTANCE
+                        );
+                    }
+                );
 
                 const issues = issuesResult.rows;
                 const projects = projectsResult.rows;
@@ -311,11 +341,15 @@ export function createAgentRouter() {
                         : null;
 
                 const localSeasonLine =
-                    formatLocalSeasonLine(
-                        profile?.postalCode ||
+                    formatLocalSeasonLine({
+                        postalCode:
+                            profile?.postalCode ||
                             profileResult.rows[0]
-                                ?.postal_code
-                    );
+                                ?.postal_code,
+                        state:
+                            profile?.state ||
+                            profileResult.rows[0]?.state,
+                    });
 
 
                 // -------------------------------------------------
@@ -499,6 +533,9 @@ export function createAgentRouter() {
                                     memoryIndex
                                 ],
 
+                            verificationStatus:
+                                "proposed",
+
                             client,
                         });
 
@@ -543,6 +580,9 @@ export function createAgentRouter() {
 
                             recommendedNextStep:
                                 issueInput.recommendedNextStep,
+
+                            verificationStatus:
+                                "proposed",
 
                             client,
                         });
@@ -595,6 +635,9 @@ export function createAgentRouter() {
                             tasks:
                                 projectInput.tasks,
 
+                            verificationStatus:
+                                "proposed",
+
                             client,
                         });
 
@@ -644,6 +687,21 @@ export function createAgentRouter() {
 
                             notes:
                                 assetInput.notes,
+
+                            installDate:
+                                assetInput.installDate ||
+                                null,
+
+                            purchaseDate:
+                                assetInput.purchaseDate ||
+                                null,
+
+                            warrantyExpiration:
+                                assetInput.warrantyExpiration ||
+                                null,
+
+                            verificationStatus:
+                                "proposed",
 
                             client,
                         });
@@ -780,6 +838,31 @@ export function createAgentRouter() {
                 // 12. RETURN EVERYTHING THE FRONTEND NEEDS
                 // -------------------------------------------------
 
+                const citations = [
+                    ...relevantMemories,
+                    ...issues,
+                ]
+                    .filter(
+                        (row) =>
+                            row.evidence_passage ||
+                            row.evidencePassage
+                    )
+                    .slice(0, 5)
+                    .map((row) => ({
+                        id: row.id,
+                        title: row.title,
+                        passage:
+                            row.evidence_passage ||
+                            row.evidencePassage,
+                        page:
+                            row.evidence_page ||
+                            row.evidencePage ||
+                            null,
+                        sourceDocumentId:
+                            row.source_document_id ||
+                            null,
+                    }));
+
                 return res.json({
                     question: question.trim(),
 
@@ -806,6 +889,8 @@ export function createAgentRouter() {
 
                     memoriesUsed:
                         relevantMemories,
+
+                    citations,
 
                     contextUsed,
 
