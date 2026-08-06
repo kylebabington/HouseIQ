@@ -376,6 +376,19 @@ beforeEach(() => {
             },
         ],
 
+        members: [
+            {
+                home_id: USER_A_HOME_ID,
+                member_auth0_id: USER_A_ID,
+                role: "owner",
+            },
+            {
+                home_id: USER_B_HOME_ID,
+                member_auth0_id: USER_B_ID,
+                role: "owner",
+            },
+        ],
+
         documents: [
             {
                 id:
@@ -567,7 +580,7 @@ beforeEach(() => {
                     "where documents.id = $1"
                 ) &&
                 normalizedSql.includes(
-                    "and homes.owner_auth0_id = $2"
+                    "homes.owner_auth0_id = $2"
                 )
             ) {
                 const [
@@ -599,9 +612,19 @@ beforeEach(() => {
                             document.home_id
                     );
 
+                const memberMatch =
+                    (testDatabase.members || []).find(
+                        (member) =>
+                            member.home_id ===
+                                document.home_id &&
+                            member.member_auth0_id ===
+                                ownerAuth0Id
+                    );
+
                 const userOwnsDocument =
                     parentHome?.owner_auth0_id ===
-                    ownerAuth0Id;
+                        ownerAuth0Id ||
+                    Boolean(memberMatch);
 
                 if (!userOwnsDocument) {
                     return {
@@ -623,6 +646,83 @@ beforeEach(() => {
                     rowCount:
                         1,
                 };
+            }
+
+            // resolveHomeMembership: home_members role lookup
+            if (
+                normalizedSql.includes(
+                    "from home_members"
+                ) &&
+                normalizedSql.includes(
+                    "member_auth0_id = $2"
+                ) &&
+                normalizedSql.includes(
+                    "select role"
+                )
+            ) {
+                const [homeId, auth0Id] = parameters;
+                const member = (
+                    testDatabase.members || []
+                ).find(
+                    (row) =>
+                        row.home_id === homeId &&
+                        row.member_auth0_id ===
+                            auth0Id
+                );
+
+                if (!member) {
+                    return { rows: [], rowCount: 0 };
+                }
+
+                return {
+                    rows: [{ role: member.role }],
+                    rowCount: 1,
+                };
+            }
+
+            // resolveHomeMembership: owner fallback
+            if (
+                normalizedSql.includes(
+                    "from homes"
+                ) &&
+                normalizedSql.includes(
+                    "owner_auth0_id = $2"
+                ) &&
+                normalizedSql.includes(
+                    "select id, owner_auth0_id"
+                )
+            ) {
+                const [homeId, auth0Id] = parameters;
+                const home = testDatabase.homes.find(
+                    (row) =>
+                        row.id === homeId &&
+                        row.owner_auth0_id ===
+                            auth0Id
+                );
+
+                if (!home) {
+                    return { rows: [], rowCount: 0 };
+                }
+
+                return {
+                    rows: [
+                        {
+                            id: home.id,
+                            owner_auth0_id:
+                                home.owner_auth0_id,
+                        },
+                    ],
+                    rowCount: 1,
+                };
+            }
+
+            // Optional owner sync into home_members
+            if (
+                normalizedSql.includes(
+                    "insert into home_members"
+                )
+            ) {
+                return { rows: [], rowCount: 0 };
             }
 
 
