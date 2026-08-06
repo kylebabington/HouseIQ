@@ -73,6 +73,10 @@ const ASSET_FIELDS = {
     model: "model",
     location: "location",
     notes: "notes",
+    installDate: "install_date",
+    purchaseDate: "purchase_date",
+    warrantyExpiration: "warranty_expiration",
+    lastServiceDate: "last_service_date",
 };
 
 const MEMORY_FIELDS = {
@@ -261,12 +265,43 @@ const TASK_VALIDATORS = {
     ),
 };
 
+function validateOptionalDate(fieldLabel) {
+    return (rawValue) => {
+        if (rawValue === null || rawValue === "") {
+            return { valid: true, value: null };
+        }
+
+        if (typeof rawValue !== "string") {
+            return {
+                valid: false,
+                error: `${fieldLabel} must be a YYYY-MM-DD string or null`,
+            };
+        }
+
+        const value = rawValue.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return {
+                valid: false,
+                error: `${fieldLabel} must be YYYY-MM-DD`,
+            };
+        }
+
+        return { valid: true, value };
+    };
+}
+
 const ASSET_VALIDATORS = {
     name: validateRequiredString("name", 200),
     brand: validateOptionalString("brand", 200),
     model: validateOptionalString("model", 200),
     location: validateOptionalString("location", 200),
     notes: validateOptionalString("notes", 5000),
+    installDate: validateOptionalDate("installDate"),
+    purchaseDate: validateOptionalDate("purchaseDate"),
+    warrantyExpiration: validateOptionalDate(
+        "warrantyExpiration"
+    ),
+    lastServiceDate: validateOptionalDate("lastServiceDate"),
 };
 
 const MEMORY_VALIDATORS = {
