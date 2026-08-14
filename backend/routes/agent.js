@@ -17,6 +17,7 @@ import {
 import { pool } from "../db/pool.js";
 
 import {
+    requireHomeAccess,
     requireHomeOwnership,
 } from "../middleware/ownership.js";
 
@@ -91,7 +92,7 @@ export function createAgentRouter() {
     router.get(
         "/homes/:homeId/agent-runs",
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             try {
                 const homeId = req.authorizedHomeId;
@@ -143,7 +144,7 @@ export function createAgentRouter() {
         // authenticated user rather than only their IP address.
         askRateLimit,
 
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             const homeId = req.authorizedHomeId;
             const { question, conversationHistory } = req.body;

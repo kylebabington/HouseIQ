@@ -123,7 +123,9 @@ HouseIQ retrieve better than a binder. Sample fixtures live in [`DOCS/`](DOCS/).
 ## Household sharing notes
 
 - Roles: `owner` (full), `member` (read/write except delete home / manage
-  members), `viewer` (read + ask).
+  members), `viewer` (read profile/records/documents + ask; no edits/uploads).
+  Read and Ask routes require `viewer+`; writes require `member+`; home delete
+  and household management require `owner`.
 - Invites store an email; `POST /api/homes/members/redeem` attaches the signed-in
   user when their Auth0 access token includes a matching `email` claim.
 - Access tokens often omit email unless Auth0 is configured to add it — document

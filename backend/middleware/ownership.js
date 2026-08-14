@@ -262,22 +262,32 @@ export async function requireDocumentOwnership(
 
         const document = result.rows[0];
 
-        // Document fetch already proved access. Resolve role
-        // best-effort for write gates; default to owner when
-        // membership tables are unavailable (tests / legacy).
-        let role = "owner";
+        // Fail closed: never default to owner. Write gates
+        // (delete, etc.) must see a verified role or deny.
+        let role;
 
         try {
-            role =
-                (await resolveHomeMembership(
-                    document.home_id,
-                    auth0Id
-                )) || "owner";
-        } catch (error) {
-            console.warn(
-                "Could not resolve document member role:",
-                error.message
+            role = await resolveHomeMembership(
+                document.home_id,
+                auth0Id
             );
+        } catch (error) {
+            console.error(
+                "Could not resolve document member role:",
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    "Could not verify document permissions",
+            });
+        }
+
+        if (!role) {
+            return res.status(403).json({
+                error:
+                    "You do not have permission for this action",
+            });
         }
 
         req.authorizedDocument = document;

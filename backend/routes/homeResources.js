@@ -16,6 +16,7 @@ import {
 import { pool } from "../db/pool.js";
 
 import {
+    requireHomeAccess,
     requireHomeOwnership,
 } from "../middleware/ownership.js";
 
@@ -78,7 +79,7 @@ export function createHomeResourcesRouter() {
     router.get(
         "/homes/:homeId/memories",
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             try {
                 const homeId = req.authorizedHomeId;
@@ -122,7 +123,7 @@ export function createHomeResourcesRouter() {
     router.post(
         "/homes/:homeId/memory-search",
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             try {
                 const homeId = req.authorizedHomeId;
@@ -186,7 +187,7 @@ export function createHomeResourcesRouter() {
     router.get(
         "/homes/:homeId/issues",
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             try {
                 const homeId = req.authorizedHomeId;
@@ -239,7 +240,7 @@ export function createHomeResourcesRouter() {
     router.get(
         "/homes/:homeId/projects",
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             try {
                 const homeId = req.authorizedHomeId;
@@ -330,7 +331,7 @@ export function createHomeResourcesRouter() {
     router.get(
         "/homes/:homeId/assets",
         requireAuth,
-        requireHomeOwnership,
+        requireHomeAccess({ minRole: "viewer" }),
         async (req, res) => {
             try {
                 const homeId = req.authorizedHomeId;

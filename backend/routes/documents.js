@@ -16,6 +16,8 @@ import { pool } from "../db/pool.js";
 
 import {
     requireDocumentOwnership,
+    requireDocumentWriteAccess,
+    requireHomeAccess,
     requireHomeOwnership,
 } from "../middleware/ownership.js";
 
@@ -56,10 +58,8 @@ export function createDocumentsRouter(upload) {
         // Confirm who is making the request.
         requireAuth,
 
-        // Confirm that this home belongs to that user.
-        //
-        // Listing by home_id is safe only after this check.
-        requireHomeOwnership,
+        // Viewers may list documents; uploads still require member+.
+        requireHomeAccess({ minRole: "viewer" }),
 
         async (req, res) => {
             try {
@@ -221,19 +221,10 @@ export function createDocumentsRouter(upload) {
         // Validate the Auth0 access token.
         requireAuth,
 
-        // Confirm the document belongs to a home the user can access.
-        requireDocumentOwnership,
+        // Delete requires member+ (fail-closed role check).
+        requireDocumentWriteAccess,
 
         async (req, res) => {
-            if (
-                req.homeMemberRole === "viewer"
-            ) {
-                return res.status(403).json({
-                    error:
-                        "You do not have permission for this action",
-                });
-            }
-
             const document =
                 req.authorizedDocument;
 
