@@ -117,6 +117,7 @@ function HomeOnboarding({
     // Seed the form from any known profile value for the active step
     // so resume/refresh and editor-filled fields do not look blank.
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- seed local answer when step changes */
         if (!currentField) {
             setAnswer("");
             return;
@@ -131,6 +132,7 @@ function HomeOnboarding({
                 )
                 : ""
         );
+        /* eslint-enable react-hooks/set-state-in-effect */
     }, [
         currentField,
         currentKnownValue,
