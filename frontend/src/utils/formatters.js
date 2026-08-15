@@ -43,6 +43,44 @@ export function formatDate(value) {
   return date.toLocaleString();
 }
 
+/**
+ * Year only, for equipment install dates.
+ */
+export function formatYear(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (!Number.isNaN(date.getTime())) {
+    return String(date.getFullYear());
+  }
+
+  const match = String(value).match(/\d{4}/);
+  return match ? match[0] : null;
+}
+
+/**
+ * Month + year, for recent work on the Home Passport.
+ */
+export function formatMonthYear(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
 
 /**
  * Formats a cost as US currency.

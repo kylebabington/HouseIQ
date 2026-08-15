@@ -122,7 +122,10 @@ export function LoggedOutFlow({ loginWithRedirect }) {
 
   if (mode === "demo") {
     return (
-      <DemoExplore onBack={() => setMode("login")} />
+      <DemoExplore
+        onBack={() => setMode("login")}
+        loginWithRedirect={loginWithRedirect}
+      />
     );
   }
 

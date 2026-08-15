@@ -17,7 +17,13 @@ const SCOPES = {
         "documents",
         "memories",
     ],
-    contractor: ["profile", "assets", "issues", "maintenance"],
+    contractor: [
+        "profile",
+        "assets",
+        "issues",
+        "maintenance",
+        "documents",
+    ],
     buyer: [
         "profile",
         "assets",

@@ -58,28 +58,41 @@ const DEMO_HOME = {
     ],
     sampleNeeds: [
         {
+            id: "demo-service-mast",
             kind: "issue",
-            title: "Service mast attachment deteriorated",
+            title: "Service mast corrosion",
             score: 92,
+            priority: "urgent",
             timingBucket: "30_days",
+            sourceLabel: "Inspection",
+            evidencePage: 18,
             explanation:
                 "Safety-sensitive electrical exposure with inspection evidence on page 18.",
             evidencePassage:
                 "Service mast attachment at north eaves shows advanced corrosion.",
         },
         {
+            id: "demo-crawlspace",
             kind: "issue",
-            title: "Crawlspace moisture staining",
+            title: "Crawlspace moisture",
             score: 74,
+            priority: "high",
             timingBucket: "90_days",
+            sourceLabel: "Inspection",
+            evidencePage: 12,
             explanation:
                 "Moisture risk rises before freeze/thaw; schedule before winter.",
+            evidencePassage:
+                "Moisture staining observed at northeast crawlspace sill.",
         },
         {
+            id: "demo-furnace",
             kind: "asset",
-            title: "Forced-air furnace approaching service interval",
+            title: "Furnace service",
             score: 61,
+            priority: "medium",
             timingBucket: "90_days",
+            sourceLabel: "Maintenance",
             explanation:
                 "Last documented service is overdue relative to manufacturer guidance.",
         },
@@ -90,10 +103,18 @@ const DEMO_HOME = {
             "Prioritize the deteriorated service mast attachment (inspection evidence), then address crawlspace moisture before freeze season, and schedule furnace service. Your roof appears roughly mid-life based on the asphalt-shingle notes in the inspection—monitor, do not replace yet.",
         citations: [
             {
-                label: "Inspection — service mast",
+                id: "demo-cite-mast",
+                title: "Inspection",
+                page: 18,
                 passage:
                     "Service mast attachment at north eaves shows advanced corrosion.",
-                page: 18,
+            },
+            {
+                id: "demo-cite-crawlspace",
+                title: "Inspection",
+                page: 12,
+                passage:
+                    "Moisture staining observed at northeast crawlspace sill.",
             },
         ],
     },
