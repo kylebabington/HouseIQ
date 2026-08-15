@@ -200,6 +200,9 @@ export async function createMemoryRecord({
     embeddingSql: providedEmbeddingSql = null,
     sourceDocumentId = null,
     sourceAgentRunId = null,
+    verificationStatus = "accepted",
+    evidencePassage = null,
+    evidencePage = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -220,6 +223,12 @@ export async function createMemoryRecord({
         Number.isInteger(importance)
             ? Math.min(Math.max(importance, 1), 5)
             : 3;
+
+    const safeVerification =
+        verificationStatus === "proposed" ||
+        verificationStatus === "rejected"
+            ? verificationStatus
+            : "accepted";
 
     const embeddingSql =
         providedEmbeddingSql ||
@@ -242,7 +251,10 @@ export async function createMemoryRecord({
             embedding,
             importance,
             source_document_id,
-            source_agent_run_id
+            source_agent_run_id,
+            verification_status,
+            evidence_passage,
+            evidence_page
         )
         VALUES (
             $1,
@@ -254,7 +266,10 @@ export async function createMemoryRecord({
             $7::VECTOR(1536),
             $8,
             $9,
-            $10
+            $10,
+            $11,
+            $12,
+            $13
         )
         RETURNING
             id,
@@ -267,6 +282,9 @@ export async function createMemoryRecord({
             importance,
             source_document_id,
             source_agent_run_id,
+            verification_status,
+            evidence_passage,
+            evidence_page,
             created_at,
             updated_at
         `,
@@ -281,6 +299,11 @@ export async function createMemoryRecord({
             safeImportance,
             sourceDocumentId,
             sourceAgentRunId,
+            safeVerification,
+            evidencePassage?.trim() || null,
+            Number.isInteger(evidencePage)
+                ? evidencePage
+                : null,
         ]
     );
 
@@ -301,6 +324,9 @@ export async function createIssueRecord({
     recommendedNextStep = "",
     sourceDocumentId = null,
     sourceAgentRunId = null,
+    verificationStatus = "accepted",
+    evidencePassage = null,
+    evidencePage = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -310,6 +336,12 @@ export async function createIssueRecord({
     if (!title?.trim()) {
         throw new Error("Issue title is required");
     }
+
+    const safeVerification =
+        verificationStatus === "proposed" ||
+        verificationStatus === "rejected"
+            ? verificationStatus
+            : "accepted";
 
     const result = await client.query(
         `
@@ -323,7 +355,10 @@ export async function createIssueRecord({
             suspected_cause,
             recommended_next_step,
             source_document_id,
-            source_agent_run_id
+            source_agent_run_id,
+            verification_status,
+            evidence_passage,
+            evidence_page
         )
         VALUES (
             $1,
@@ -335,7 +370,10 @@ export async function createIssueRecord({
             $6,
             $7,
             $8,
-            $9
+            $9,
+            $10,
+            $11,
+            $12
         )
         RETURNING *
         `,
@@ -349,6 +387,11 @@ export async function createIssueRecord({
             recommendedNextStep?.trim() || "",
             sourceDocumentId,
             sourceAgentRunId,
+            safeVerification,
+            evidencePassage?.trim() || null,
+            Number.isInteger(evidencePage)
+                ? evidencePage
+                : null,
         ]
     );
 
@@ -371,6 +414,9 @@ export async function createProjectRecord({
     tasks = [],
     sourceDocumentId = null,
     sourceAgentRunId = null,
+    verificationStatus = "accepted",
+    evidencePassage = null,
+    evidencePage = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -380,6 +426,12 @@ export async function createProjectRecord({
     if (!title?.trim()) {
         throw new Error("Project title is required");
     }
+
+    const safeVerification =
+        verificationStatus === "proposed" ||
+        verificationStatus === "rejected"
+            ? verificationStatus
+            : "accepted";
 
     const projectResult = await client.query(
         `
@@ -394,7 +446,10 @@ export async function createProjectRecord({
             diy_difficulty,
             safety_notes,
             source_document_id,
-            source_agent_run_id
+            source_agent_run_id,
+            verification_status,
+            evidence_passage,
+            evidence_page
         )
         VALUES (
             $1,
@@ -407,7 +462,10 @@ export async function createProjectRecord({
             $7,
             $8,
             $9,
-            $10
+            $10,
+            $11,
+            $12,
+            $13
         )
         RETURNING *
         `,
@@ -422,6 +480,11 @@ export async function createProjectRecord({
             safetyNotes?.trim() || "",
             sourceDocumentId,
             sourceAgentRunId,
+            safeVerification,
+            evidencePassage?.trim() || null,
+            Number.isInteger(evidencePage)
+                ? evidencePage
+                : null,
         ]
     );
 
@@ -488,8 +551,15 @@ export async function createAssetRecord({
     serialNumber = "",
     location = "",
     notes = "",
+    installDate = null,
+    purchaseDate = null,
+    warrantyExpiration = null,
+    lastServiceDate = null,
     sourceDocumentId = null,
     sourceAgentRunId = null,
+    verificationStatus = "accepted",
+    evidencePassage = null,
+    evidencePage = null,
     client = pool,
 }) {
     if (!homeId) {
@@ -504,6 +574,12 @@ export async function createAssetRecord({
         throw new Error("Asset name is required");
     }
 
+    const safeVerification =
+        verificationStatus === "proposed" ||
+        verificationStatus === "rejected"
+            ? verificationStatus
+            : "accepted";
+
     const result = await client.query(
         `
         INSERT INTO home_assets (
@@ -515,8 +591,15 @@ export async function createAssetRecord({
             serial_number,
             location,
             notes,
+            install_date,
+            purchase_date,
+            warranty_expiration,
+            last_service_date,
             source_document_id,
-            source_agent_run_id
+            source_agent_run_id,
+            verification_status,
+            evidence_passage,
+            evidence_page
         )
         VALUES (
             $1,
@@ -528,7 +611,14 @@ export async function createAssetRecord({
             $7,
             $8,
             $9,
-            $10
+            $10,
+            $11,
+            $12,
+            $13,
+            $14,
+            $15,
+            $16,
+            $17
         )
         RETURNING *
         `,
@@ -541,8 +631,17 @@ export async function createAssetRecord({
             serialNumber?.trim() || "",
             location?.trim() || "",
             notes?.trim() || "",
+            installDate || null,
+            purchaseDate || null,
+            warrantyExpiration || null,
+            lastServiceDate || null,
             sourceDocumentId,
             sourceAgentRunId,
+            safeVerification,
+            evidencePassage?.trim() || null,
+            Number.isInteger(evidencePage)
+                ? evidencePage
+                : null,
         ]
     );
 
