@@ -242,6 +242,12 @@ function IssuesPanel({
             sourceDocumentId={
               issue.source_document_id
             }
+            evidencePassage={
+              issue.evidence_passage
+            }
+            evidencePage={
+              issue.evidence_page
+            }
             onOpenDocument={onOpenDocument}
           />
 

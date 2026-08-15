@@ -209,6 +209,7 @@ function AgentPanel({
             data.clarifyingQuestions || [],
           actionsTaken: data.actionsTaken || [],
           contextUsed: data.contextUsed || null,
+          citations: data.citations || [],
         },
       ]);
 
@@ -396,6 +397,29 @@ function AgentPanel({
                 <div className="answer-box">
                   {turn.answer}
                 </div>
+
+                {turn.citations?.length > 0 && (
+                  <section className="clarifying-section">
+                    <h4>Evidence</h4>
+                    <ul className="timeline-list">
+                      {turn.citations.map((citation) => (
+                        <li key={citation.id}>
+                          <strong>
+                            {citation.title || "Source"}
+                            {citation.page
+                              ? ` · p. ${citation.page}`
+                              : ""}
+                          </strong>
+                          {citation.passage ? (
+                            <em>
+                              &ldquo;{citation.passage}&rdquo;
+                            </em>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
 
                 {renderContextUsedSummary(
                   turn.contextUsed

@@ -377,6 +377,12 @@ function MemoriesPanel({
                   sourceDocumentId={
                     memory.source_document_id
                   }
+                  evidencePassage={
+                    memory.evidence_passage
+                  }
+                  evidencePage={
+                    memory.evidence_page
+                  }
                   onOpenDocument={onOpenDocument}
                 />
 
