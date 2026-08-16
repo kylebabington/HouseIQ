@@ -50,7 +50,9 @@ export default function TimelinePanel({
                 : ""}
             </div>
             {event.evidence_passage && (
-              <em>&ldquo;{event.evidence_passage}&rdquo;</em>
+              <p className="evidence-quote">
+                &ldquo;{event.evidence_passage}&rdquo;
+              </p>
             )}
           </li>
         ))}

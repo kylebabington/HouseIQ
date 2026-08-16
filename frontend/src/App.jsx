@@ -876,6 +876,21 @@ function App() {
                   >
                     Ask HouseIQ
                   </button>
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setActiveTab("profile");
+                      window.setTimeout(() => {
+                        scrollToSection(
+                          "houseiq-passport-panel"
+                        );
+                      }, 80);
+                    }}
+                  >
+                    Home Passport
+                  </button>
                 </div>
               </section>
 

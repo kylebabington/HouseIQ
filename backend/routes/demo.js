@@ -17,6 +17,117 @@ import {
 } from "../middleware/auth.js";
 import { pool } from "../db/pool.js";
 
+const FALLBACK_SAMPLE_NEEDS = [
+    {
+        id: "demo-service-mast",
+        kind: "issue",
+        title: "Service mast corrosion",
+        score: 92,
+        priority: "urgent",
+        timingBucket: "30_days",
+        sourceLabel: "Inspection",
+        evidencePage: 18,
+        explanation:
+            "Safety-sensitive electrical exposure with inspection evidence on page 18.",
+        evidencePassage:
+            "Service mast attachment at north eaves shows advanced corrosion.",
+    },
+    {
+        id: "demo-crawlspace",
+        kind: "issue",
+        title: "Crawlspace moisture",
+        score: 74,
+        priority: "high",
+        timingBucket: "90_days",
+        sourceLabel: "Inspection",
+        evidencePage: 12,
+        explanation:
+            "Moisture risk rises before freeze/thaw; schedule before winter.",
+        evidencePassage:
+            "Moisture staining observed at northeast crawlspace sill.",
+    },
+    {
+        id: "demo-furnace",
+        kind: "asset",
+        title: "Furnace service",
+        score: 61,
+        priority: "medium",
+        timingBucket: "90_days",
+        sourceLabel: "Maintenance",
+        explanation:
+            "Last documented service is overdue relative to manufacturer guidance.",
+    },
+];
+
+const FALLBACK_SAMPLE_ANSWER = {
+    question: "What should I handle before winter?",
+    answer:
+        "Prioritize the deteriorated service mast attachment (inspection evidence), then address crawlspace moisture before freeze season, and schedule furnace service. Your roof appears roughly mid-life based on the asphalt-shingle notes in the inspection—monitor, do not replace yet.",
+    citations: [
+        {
+            id: "demo-cite-mast",
+            title: "Inspection",
+            page: 18,
+            passage:
+                "Service mast attachment at north eaves shows advanced corrosion.",
+        },
+        {
+            id: "demo-cite-crawlspace",
+            title: "Inspection",
+            page: 12,
+            passage:
+                "Moisture staining observed at northeast crawlspace sill.",
+        },
+    ],
+};
+
+function priorityScore(priority) {
+    const key = String(priority || "medium").toLowerCase();
+    if (key === "urgent" || key === "critical") {
+        return 92;
+    }
+    if (key === "high") {
+        return 74;
+    }
+    if (key === "medium") {
+        return 61;
+    }
+    return 40;
+}
+
+function timingBucketForPriority(priority) {
+    const key = String(priority || "medium").toLowerCase();
+    if (key === "urgent" || key === "critical") {
+        return "30_days";
+    }
+    if (key === "high") {
+        return "90_days";
+    }
+    return "365_days";
+}
+
+function needsFromIssues(issues) {
+    return (issues || [])
+        .filter((issue) => {
+            const status = String(issue.status || "").toLowerCase();
+            return status !== "resolved" && status !== "closed";
+        })
+        .slice(0, 8)
+        .map((issue) => ({
+            id: issue.id,
+            kind: "issue",
+            title: issue.title,
+            score: priorityScore(issue.priority),
+            priority: issue.priority || "medium",
+            timingBucket: timingBucketForPriority(issue.priority),
+            sourceLabel: issue.evidencePage ? "Inspection" : null,
+            evidencePage: issue.evidencePage,
+            evidencePassage: issue.evidencePassage,
+            explanation:
+                issue.description || issue.recommendedNextStep,
+        }));
+}
+
 const FALLBACK_DEMO = {
     source: "fallback",
     home: {
@@ -46,6 +157,8 @@ const FALLBACK_DEMO = {
         projects: 0,
         memories: 0,
     },
+    sampleNeeds: FALLBACK_SAMPLE_NEEDS,
+    sampleAnswer: FALLBACK_SAMPLE_ANSWER,
     assets: [
         {
             id: "fallback-furnace",
@@ -364,6 +477,8 @@ async function loadPublicDemoHome(homeId) {
             projects: projects.length,
             memories: memories.length,
         },
+        sampleNeeds: needsFromIssues(issues),
+        sampleAnswer: FALLBACK_SAMPLE_ANSWER,
         assets,
         issues,
         projects,

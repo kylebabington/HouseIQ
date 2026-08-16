@@ -266,6 +266,27 @@ h5,
   width: min(920px, 100%);
   margin: 0 auto;
   padding: 1.5rem;
+  text-align: left;
+}
+
+.demo-explore-page {
+  align-items: stretch;
+}
+
+.demo-explore-header {
+  margin-bottom: 0.5rem;
+}
+
+.demo-explore-header h1 {
+  margin-bottom: 0.5rem;
+}
+
+.demo-ask-preview {
+  margin-top: 0.5rem;
+}
+
+.demo-ask-preview h3 {
+  margin: 0.2rem 0 1rem;
 }
 
 .demo-explore-panel pre {
@@ -2252,6 +2273,10 @@ button:disabled {
   background: #eef3ea;
 }
 
+div.needs-item {
+  cursor: default;
+}
+
 .needs-item-body {
   display: flex;
   flex-direction: column;
@@ -2261,6 +2286,18 @@ button:disabled {
 .needs-reason {
   color: #4e6f53;
   font-size: 0.92rem;
+}
+
+.evidence-quote {
+  display: block;
+  margin: 0.35rem 0 0;
+  padding: 0.45rem 0.65rem;
+  border-left: 3px solid rgba(61, 99, 66, 0.45);
+  background: rgba(255, 255, 255, 0.55);
+  color: #2f4a35;
+  font-size: 0.9rem;
+  font-style: italic;
+  line-height: 1.45;
 }
 
 .onboarding-gate {
@@ -2399,4 +2436,30 @@ button:disabled {
   gap: 0.75rem;
   align-items: flex-start;
   justify-content: space-between;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .passport-card,
+  .passport-card * {
+    visibility: visible;
+  }
+
+  .passport-card {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    border: none;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  .passport-actions,
+  .passport-controls {
+    display: none !important;
+  }
 }

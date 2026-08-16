@@ -655,6 +655,9 @@ ADD COLUMN IF NOT EXISTS evidence_page INT;
 ALTER TABLE home_assets
 ADD COLUMN IF NOT EXISTS last_service_date DATE;
 
+ALTER TABLE home_assets
+ADD COLUMN IF NOT EXISTS purchase_date DATE;
+
 
 -- ---------------------------------------------------------
 -- DOCUMENT CHUNKS (page-level evidence)

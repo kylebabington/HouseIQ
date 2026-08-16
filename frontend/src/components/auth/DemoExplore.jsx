@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { API_BASE_URL } from "../../api.js";
+import NeedsBoard from "../dashboard/NeedsBoard.jsx";
 
 function formatDate(value) {
   if (!value) {
@@ -33,10 +34,13 @@ function readableLabel(value) {
 }
 
 /**
- * Public read-only explorer for the real HouseIQ home selected by the backend
- * PUBLIC_DEMO_HOME_ID environment variable.
+ * Public read-only explorer for the HouseIQ home selected by
+ * PUBLIC_DEMO_HOME_ID. Falls back to the Ranch preview.
  */
-export default function DemoExplore({ onBack }) {
+export default function DemoExplore({
+  onBack,
+  loginWithRedirect,
+}) {
   const [demo, setDemo] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -101,29 +105,43 @@ export default function DemoExplore({ onBack }) {
   const home = demo?.home;
   const profile = demo?.profile;
   const stats = demo?.stats || {};
+  const needsItems = (demo?.sampleNeeds || []).map(
+    (item, index) => ({
+      ...item,
+      id: item.id || `demo-need-${index}`,
+    })
+  );
+  const citations = demo?.sampleAnswer?.citations || [];
 
   return (
-    <main className="auth-page auth-page--landing">
-      <section className="auth-card demo-explore-panel">
-        <p className="eyebrow">Explore without signing in</p>
+    <main className="auth-page auth-page--landing demo-explore-page">
+      <section className="demo-explore-panel">
+        <header className="demo-explore-header">
+          <p className="eyebrow">Explore without signing in</p>
+          <h1>{home?.name || "HouseIQ Demo Home"}</h1>
+          <p className="auth-introduction">
+            HouseIQ already knows this home. Here is what
+            matters next — with evidence.
+          </p>
 
-        <h1>{home?.name || "HouseIQ Demo Home"}</h1>
-
-        <p className="auth-introduction">
-          A read-only view of a real HouseIQ home record. The documents,
-          assets, issues, and memories below come from the same database-backed
-          home used by the signed-in app.
-        </p>
-
-        <div className="auth-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={onBack}
-          >
-            Back
-          </button>
-        </div>
+          <div className="auth-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onBack}
+            >
+              Back
+            </button>
+            {typeof loginWithRedirect === "function" && (
+              <button
+                type="button"
+                onClick={() => loginWithRedirect()}
+              >
+                Log in to use your home
+              </button>
+            )}
+          </div>
+        </header>
 
         {loading && <p>Loading demo…</p>}
         {error && <p className="error-message">{error}</p>}
@@ -137,7 +155,57 @@ export default function DemoExplore({ onBack }) {
               </p>
             )}
 
-            <section style={{ marginTop: "1.5rem" }}>
+            <NeedsBoard items={needsItems} />
+
+            {demo.sampleAnswer && (
+              <section className="panel-block demo-ask-preview">
+                <p className="eyebrow">Ask HouseIQ</p>
+                <h3>{demo.sampleAnswer.question}</h3>
+
+                <div className="turn-response">
+                  <div className="turn-response-header">
+                    <span className="turn-response-label">
+                      HouseIQ
+                    </span>
+                  </div>
+                  <div className="answer-box">
+                    {demo.sampleAnswer.answer}
+                  </div>
+
+                  {citations.length > 0 && (
+                    <section className="clarifying-section">
+                      <h4>Evidence</h4>
+                      <ul className="timeline-list">
+                        {citations.map((citation, index) => (
+                          <li
+                            key={
+                              citation.id ||
+                              `${citation.page}-${index}`
+                            }
+                          >
+                            <strong>
+                              {citation.title ||
+                                citation.label ||
+                                "Source"}
+                              {citation.page
+                                ? ` · p. ${citation.page}`
+                                : ""}
+                            </strong>
+                            {citation.passage ? (
+                              <p className="evidence-quote">
+                                &ldquo;{citation.passage}&rdquo;
+                              </p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              </section>
+            )}
+
+            <section className="panel-block">
               <h2>Property</h2>
               <ul className="timeline-list">
                 <li>
@@ -182,7 +250,7 @@ export default function DemoExplore({ onBack }) {
               </ul>
             </section>
 
-            <section style={{ marginTop: "1.75rem" }}>
+            <section className="panel-block">
               <h2>What HouseIQ knows</h2>
               <ul className="landing-steps">
                 <li>
@@ -205,7 +273,7 @@ export default function DemoExplore({ onBack }) {
             </section>
 
             {(demo.assets || []).length > 0 && (
-              <section style={{ marginTop: "1.75rem" }}>
+              <section className="panel-block">
                 <h2>Home systems</h2>
                 <ul className="timeline-list">
                   {demo.assets.slice(0, 12).map((asset) => (
@@ -232,7 +300,7 @@ export default function DemoExplore({ onBack }) {
             )}
 
             {(demo.issues || []).length > 0 && (
-              <section style={{ marginTop: "1.75rem" }}>
+              <section className="panel-block">
                 <h2>Tracked issues</h2>
                 <ul className="timeline-list">
                   {demo.issues.slice(0, 12).map((issue) => (
@@ -242,13 +310,21 @@ export default function DemoExplore({ onBack }) {
                         {readableLabel(issue.priority)} priority · {readableLabel(issue.status)}
                       </div>
                       {issue.description && <span>{issue.description}</span>}
+                      {issue.evidencePassage && (
+                        <p className="evidence-quote">
+                          {issue.evidencePage
+                            ? `p. ${issue.evidencePage} · `
+                            : ""}
+                          &ldquo;{issue.evidencePassage}&rdquo;
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
               </section>
             )}
 
-            <section style={{ marginTop: "1.75rem" }}>
+            <section className="panel-block">
               <h2>Document history</h2>
 
               {sortedDocuments.length === 0 ? (

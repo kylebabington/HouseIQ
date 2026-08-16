@@ -18,9 +18,15 @@ test.describe("HouseIQ public demo", () => {
     });
     await expect(explore).toBeVisible();
     await explore.click();
+    await expect(page.locator("h1")).toBeVisible();
     await expect(
       page.getByRole("heading", {
-        name: /1978 Indianapolis Ranch/i,
+        name: /What your house needs/i,
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /What should I handle before winter/i,
       })
     ).toBeVisible();
   });
@@ -31,7 +37,8 @@ test.describe("HouseIQ public demo", () => {
     const response = await request.get(`${API_URL}/demo/home`);
     expect(response.ok()).toBeTruthy();
     const body = await response.json();
-    expect(body.name).toMatch(/Indianapolis/i);
+    const homeName = body.home?.name || body.name;
+    expect(homeName).toBeTruthy();
     expect(body.sampleNeeds?.length).toBeGreaterThan(0);
   });
 });

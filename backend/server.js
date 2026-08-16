@@ -36,6 +36,57 @@ import { createRecordsRouter } from "./routes/records.js";
 
 const app = express();
 
+function allowedCorsOrigins() {
+    return String(
+        process.env.FRONTEND_URL ||
+            "http://localhost:5173"
+    )
+        .split(",")
+        .map((value) =>
+            value.trim().replace(/^["']|["']$/g, "")
+        )
+        .filter(Boolean);
+}
+
+function isLocalViteOrigin(origin) {
+    try {
+        const url = new URL(origin);
+        const isLoopback =
+            url.hostname === "localhost" ||
+            url.hostname === "127.0.0.1";
+        const port = Number(url.port);
+        return (
+            isLoopback &&
+            port >= 5173 &&
+            port <= 5179
+        );
+    } catch {
+        return false;
+    }
+}
+
+function corsOrigin(origin, callback) {
+    if (!origin) {
+        callback(null, true);
+        return;
+    }
+
+    if (allowedCorsOrigins().includes(origin)) {
+        callback(null, true);
+        return;
+    }
+
+    if (
+        process.env.NODE_ENV !== "production" &&
+        isLocalViteOrigin(origin)
+    ) {
+        callback(null, true);
+        return;
+    }
+
+    callback(null, false);
+}
+
 // ---------------------------------------------------------
 // REQUEST ID
 // ---------------------------------------------------------
@@ -53,10 +104,10 @@ app.use((req, res, next) => {
 
 app.use(
     cors({
-        // Only allow requests from the HouseIQ frontend.
-        origin:
-            process.env.FRONTEND_URL ||
-            "http://localhost:5173",
+        // Allow the configured frontend origin. In local
+        // development, also allow Vite's fallback ports
+        // (5173–5179) so Explore demo works if 5173 is taken.
+        origin: corsOrigin,
 
         // These are the HTTP methods currently used by HouseIQ.
         methods: [

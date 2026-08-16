@@ -30,13 +30,12 @@ function ProposalGroup({
               </p>
             ) : null}
             {item.evidence_passage && (
-              <em>
-                Evidence
+              <p className="evidence-quote">
                 {item.evidence_page
-                  ? ` (p. ${item.evidence_page})`
+                  ? `p. ${item.evidence_page} · `
                   : ""}
-                : &ldquo;{item.evidence_passage}&rdquo;
-              </em>
+                &ldquo;{item.evidence_passage}&rdquo;
+              </p>
             )}
             <div className="auth-actions" style={{ marginTop: "0.5rem" }}>
               <button
