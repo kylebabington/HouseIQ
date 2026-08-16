@@ -9,6 +9,10 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "crypto";
 
+import {
+    getAuthenticatedUserId,
+    requireAuth,
+} from "../middleware/auth.js";
 import { pool } from "../db/pool.js";
 import { demoReadRateLimit } from "../middleware/rateLimit.js";
 
@@ -733,6 +737,85 @@ export function createDemoRouter() {
                     error:
                         "The public demo home could not be loaded.",
                 });
+            }
+        }
+    );
+
+    // Backward-compatible local setup endpoint. Unlike the old demo seed,
+    // this creates only an empty home shell. No fake issues/assets are
+    // inserted; the demo becomes interesting only after documents are uploaded.
+    router.post(
+        "/demo/seed-indianapolis-ranch",
+        requireAuth,
+        async (req, res) => {
+            const auth0Id = getAuthenticatedUserId(req);
+            let client;
+
+            try {
+                client = await pool.connect();
+                await client.query("BEGIN");
+
+                const homeResult = await client.query(
+                    `
+                    INSERT INTO homes (
+                        name,
+                        year_built,
+                        owner_auth0_id,
+                        notes
+                    )
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING *
+                    `,
+                    [
+                        "HouseIQ Demo House",
+                        1994,
+                        auth0Id,
+                        "Document-backed HouseIQ demo home. Upload real demo fixtures to build its history.",
+                    ]
+                );
+
+                const home = homeResult.rows[0];
+
+                await client.query(
+                    `
+                    INSERT INTO home_members (
+                        home_id,
+                        member_auth0_id,
+                        role
+                    )
+                    VALUES ($1, $2, 'owner')
+                    ON CONFLICT DO NOTHING
+                    `,
+                    [home.id, auth0Id]
+                );
+
+                await client.query("COMMIT");
+
+                return res.status(201).json({
+                    message:
+                        "Empty document-backed demo home created. Upload documents next.",
+                    home,
+                });
+            } catch (error) {
+                if (client) {
+                    try {
+                        await client.query("ROLLBACK");
+                    } catch {
+                        /* ignore rollback failure */
+                    }
+                }
+
+                console.error(
+                    "Document-backed demo seed failed:",
+                    error
+                );
+
+                return res.status(500).json({
+                    error:
+                        "Failed to create demo home",
+                });
+            } finally {
+                client?.release();
             }
         }
     );
