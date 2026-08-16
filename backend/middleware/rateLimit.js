@@ -68,3 +68,24 @@ export const uploadRateLimit = rateLimit({
             "Too many documents uploaded. Please try again in a few minutes.",
     },
 });
+
+// ---------------------------------------------------------
+// PUBLIC DEMO READ RATE LIMIT
+// ---------------------------------------------------------
+//
+// The anonymous demo performs only database reads, never OpenAI work.
+// It still gets a generous IP-based ceiling so a public deployment cannot
+// be hammered into issuing an unbounded number of database queries.
+export const demoReadRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => ipKeyGenerator(req.ip),
+    skip: skipInTestEnvironment,
+    store: createOptionalStore(),
+    message: {
+        error:
+            "Too many demo requests. Please try again in a few minutes.",
+    },
+});
