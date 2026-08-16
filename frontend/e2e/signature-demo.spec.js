@@ -23,6 +23,20 @@ test.describe("HouseIQ public demo", () => {
         name: /1978 Indianapolis Ranch/i,
       })
     ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /What your house needs/i,
+      })
+    ).toBeVisible();
+    await expect(page.getByText("92")).toBeVisible();
+    await expect(
+      page.getByText(/Inspection · p\.18/i)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /What should I handle before winter/i,
+      })
+    ).toBeVisible();
   });
 
   test("public demo API returns seeded story", async ({

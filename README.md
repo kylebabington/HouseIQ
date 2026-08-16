@@ -1,23 +1,103 @@
 # HouseIQ
 
-**Agentic home memory.** HouseIQ remembers everything about your home — every repair,
-system, project, problem, and maintenance detail — so you don't have to.
+**Your home's history, evidence, and next move.**
 
-## Stack
+HouseIQ turns inspections, invoices, repairs, and conversations into an
+evidence-backed memory of your home — then tells you what matters next and why.
+
+HouseIQ doesn't just answer questions about homes. **It remembers your home.**
+Every inspection, invoice, repair, and conversation makes that memory smarter —
+and HouseIQ can show you exactly where it learned what it knows.
+
+[Live Demo](#) · [Demo Video](#)
+
+> Open **Explore demo home** on the landing page (no Auth0 required) to use the
+> 1978 Indianapolis Ranch: ranked needs with inspection page citations, then a
+> sample Ask answer with evidence.
+
+## The problem
+
+When you buy a house, you're handed piles of paperwork. Five years later, nobody
+remembers where anything is — or why the furnace, the roof, or the crawlspace
+matters this winter.
+
+## How HouseIQ works
+
+1. **Upload** an inspection, invoice, or photo.
+2. **Review proposed changes** with the source passage. HouseIQ does not blindly
+   trust its AI — the homeowner decides what becomes true.
+3. **Memory densifies over time.** The next document is not a one-off analysis;
+   it attaches to systems the house already knows.
+4. **See what matters next.** A ranked plan uses location, climate, equipment,
+   inspection findings, and maintenance history — with evidence you can open.
+
+Judges should remember three things: HouseIQ learns. HouseIQ remembers. HouseIQ
+tells you what matters next — with evidence.
+
+## Signature demo
+
+Build the entire walkthrough around **one house**: the 1978 Indianapolis Ranch.
+Sample files live in [`DOCS/`](DOCS/). Do not tour every tab.
+
+### Scene 1 — HouseIQ knows almost nothing
+
+When you buy a house, you're handed piles of paperwork. Five years later, nobody
+remembers where anything is.
+
+Create or seed the Ranch (signed-in: **Seed Indianapolis Ranch**), or open
+**Explore demo home** for the public preview.
+
+### Scene 2 — Upload the inspection
+
+Upload [`DOCS/Fictitious_Home_Inspection_Report.pdf`](DOCS/Fictitious_Home_Inspection_Report.pdf)
+as an *Inspection report*. HouseIQ reads it and shows **Proposed changes** —
+for example service mast deterioration — with the evidence passage
+(*Inspection · p.18*). Click **Accept**.
+
+HouseIQ doesn't blindly trust its AI. It proposes what it learned, shows its
+evidence, and the homeowner decides what becomes true.
+
+### Scene 3 — Time passes
+
+Six months later, the HVAC technician comes. Upload
+[`DOCS/SAMPLE HVAC REPAIR INVOICE.txt`](DOCS/SAMPLE HVAC REPAIR INVOICE.txt)
+as a *Repair invoice*.
+
+HouseIQ recognizes that this isn't some unrelated furnace. It's information
+about the furnace the house already knows about.
+
+This is the important part: **HouseIQ isn't analyzing isolated documents. It's
+building the memory of the house over time.**
+
+### Scene 4 — Ask the killer question
+
+Ask:
+
+> What should I handle before winter?
+
+HouseIQ uses location, climate, property profile, inspection findings, equipment,
+maintenance history, and outstanding issues — then gives a ranked plan. Click the
+evidence. Done.
+
+### Scene 5 — End with the Passport
+
+When you need someone else to work on the house, you don't have to explain five
+years of history. Click **Generate Contractor Home Passport**. Show major systems,
+current concerns, recent work, and evidence. Stop there.
+
+## Architecture
 
 - **Frontend** — React + Vite
 - **Backend** — Express (Node.js)
-- **Database** — CockroachDB (Postgres-compatible, with `pgvector`-style vector search
-  for semantic memory retrieval)
-- **Auth** — Auth0 (Authorization Code + PKCE on the frontend, JWT bearer validation
-  on the backend)
-- **AI** — OpenAI (chat completions with Structured Outputs for the agent, embeddings
-  for memory search)
+- **Database** — CockroachDB (Postgres-compatible, with `pgvector`-style vector
+  search for semantic memory retrieval)
+- **Auth** — Auth0 (Authorization Code + PKCE on the frontend, JWT bearer
+  validation on the backend)
+- **AI** — OpenAI (chat completions with Structured Outputs for the agent,
+  embeddings for memory search)
 - **File storage** — Amazon S3 (private bucket for uploaded home documents)
 
-## Setup
-
-### 1. Clone and configure environment variables
+## Running locally
 
 ```bash
 git clone <this-repo-url>
@@ -27,47 +107,26 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-Fill in the values described below.
-
-### 2. Install dependencies
+Fill in the values in the tables below, then:
 
 ```bash
-cd backend
-npm install
+cd backend && npm install && npm run db:schema
+cd ../frontend && npm install
 
-cd ../frontend
-npm install
-```
+# terminal 1
+cd backend && npm run dev
 
-### 3. Create the database schema
-
-```bash
-cd backend
-npm run db:schema
-```
-
-### 4. Run the app
-
-In one terminal:
-
-```bash
-cd backend
-npm run dev
-```
-
-In another terminal:
-
-```bash
-cd frontend
-npm run dev
+# terminal 2
+cd frontend && npm run dev
 ```
 
 The backend runs at `http://localhost:5000` and the frontend at
-`http://localhost:5173` by default.
+`http://localhost:5173` by default. Open the app and click **Explore demo home**
+to see the Ranch without signing in.
 
-## Required environment variables
+### Required environment variables
 
-### `backend/.env`
+#### `backend/.env`
 
 | Variable | Description |
 |---|---|
@@ -83,7 +142,7 @@ The backend runs at `http://localhost:5000` and the frontend at
 | `AWS_ACCESS_KEY_ID` | Local-development-only AWS credential (use an IAM role in production). |
 | `AWS_SECRET_ACCESS_KEY` | Local-development-only AWS credential (use an IAM role in production). |
 
-### `frontend/.env`
+#### `frontend/.env`
 
 | Variable | Description |
 |---|---|
@@ -91,34 +150,6 @@ The backend runs at `http://localhost:5000` and the frontend at
 | `VITE_AUTH0_CLIENT_ID` | The Client ID of the Auth0 Single-Page Application. |
 | `VITE_AUTH0_AUDIENCE` | Must exactly match `AUTH0_AUDIENCE` on the backend. |
 | `VITE_API_URL` | Base URL of the backend API, e.g. `http://localhost:5000/api`. |
-
-## Signature demo script
-
-This walks through HouseIQ's core loop: densify what the home knows, then watch
-HouseIQ retrieve better than a binder. Sample fixtures live in [`DOCS/`](DOCS/).
-
-1. **Sign in** and create a home (e.g. "1978 Ranch", built 1978).
-2. **Complete (or skip) the onboarding gate.** ZIP / property basics unlock Ask
-   and sharpen the "What your house needs" board.
-3. **Upload a document or photo.** Under "Upload a home document or photo," choose
-   *Inspection report* and select `DOCS/sample-inspection.txt` (or the PDF /
-   a photo of a page). HouseIQ extracts facts and creates issues, assets, and
-   memories — with provenance back to the source file.
-4. **Check the needs board** above Ask — ranked priorities appear from open
-   issues, equipment age, and local season *before* you ask.
-5. **Upload a second document.** Choose *Repair invoice* and select
-   `DOCS/SAMPLE HVAC REPAIR INVOICE.txt`. HouseIQ links this to what it already
-   knows about the home's HVAC system.
-6. **Ask HouseIQ a question** (once basics are known), e.g.:
-
-   > What should I do before winter?
-
-   HouseIQ answers using the home profile, documents, and open issues — and
-   shows what context it used. Advice is also saved under **Advice history**.
-7. **Click an action chip** or a needs-board row to jump to that record.
-8. **Optional:** Share the home (Profile tab) by invite email; the invitee
-   redeems on next sign-in when their token includes that email. Search memories
-   with "Find anything about this home."
 
 ## Household sharing notes
 
@@ -135,5 +166,7 @@ HouseIQ retrieve better than a binder. Sample fixtures live in [`DOCS/`](DOCS/).
 
 A ready-to-use Postman collection (with automatic Auth0 token handling) lives in
 [`postman/`](postman/). See [`postman/README.md`](postman/README.md) for setup.
-New routes include `GET /homes/:homeId/needs`, `GET /homes/:homeId/agent-runs`,
-and `/homes/:homeId/members`.
+
+Public demo: `GET /api/demo/home`. Authenticated extras include
+`GET /homes/:homeId/needs`, `GET /homes/:homeId/passport`,
+`GET /homes/:homeId/agent-runs`, and `/homes/:homeId/members`.

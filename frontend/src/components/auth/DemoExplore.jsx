@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 
 import { API_BASE_URL } from "../../api.js";
+import NeedsBoard from "../dashboard/NeedsBoard.jsx";
 
 /**
  * Public demo home explorer (no Auth0 required).
+ * Renders the real Needs + Ask surfaces against seeded Ranch data.
  */
-export default function DemoExplore({ onBack }) {
+export default function DemoExplore({
+  onBack,
+  loginWithRedirect,
+}) {
   const [demo, setDemo] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -45,60 +50,97 @@ export default function DemoExplore({ onBack }) {
     };
   }, []);
 
-  return (
-    <main className="auth-page auth-page--landing">
-      <section className="auth-card demo-explore-panel">
-        <p className="eyebrow">Explore without signing in</p>
-        <h1>1978 Indianapolis Ranch</h1>
-        <p className="auth-introduction">
-          A read-only preview of HouseIQ&apos;s evidence-backed
-          home memory and winter plan.
-        </p>
+  const needsItems = (demo?.sampleNeeds || []).map(
+    (item, index) => ({
+      ...item,
+      id: item.id || `demo-need-${index}`,
+    })
+  );
 
-        <div className="auth-actions">
-          <button type="button" className="secondary-button" onClick={onBack}>
-            Back
-          </button>
-        </div>
+  const citations = demo?.sampleAnswer?.citations || [];
+
+  return (
+    <main className="auth-page auth-page--landing demo-explore-page">
+      <section className="demo-explore-panel">
+        <header className="demo-explore-header">
+          <p className="eyebrow">Explore without signing in</p>
+          <h1>1978 Indianapolis Ranch</h1>
+          <p className="auth-introduction">
+            HouseIQ already knows this home. Here is what
+            matters next — with evidence.
+          </p>
+
+          <div className="auth-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onBack}
+            >
+              Back
+            </button>
+            {typeof loginWithRedirect === "function" && (
+              <button
+                type="button"
+                onClick={() => loginWithRedirect()}
+              >
+                Log in to use your home
+              </button>
+            )}
+          </div>
+        </header>
 
         {loading && <p>Loading demo…</p>}
         {error && <p className="error-message">{error}</p>}
 
         {demo && (
           <>
-            <ol className="landing-steps" style={{ marginTop: "1.5rem" }}>
-              {demo.story.map((step) => (
-                <li key={step.step}>
-                  <strong>
-                    {step.step}. {step.title}
-                  </strong>
-                  <span>{step.detail}</span>
-                </li>
-              ))}
-            </ol>
+            <NeedsBoard items={needsItems} />
 
-            <h2 style={{ marginTop: "1.75rem" }}>Sample priorities</h2>
-            <ul className="timeline-list">
-              {demo.sampleNeeds.map((item) => (
-                <li key={item.title}>
-                  <strong>
-                    {item.title} — {item.score}/100
-                  </strong>
-                  <div>{item.explanation}</div>
-                  {item.evidencePassage && (
-                    <em>&ldquo;{item.evidencePassage}&rdquo;</em>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <section className="panel-block demo-ask-preview">
+              <p className="eyebrow">Ask HouseIQ</p>
+              <h3>{demo.sampleAnswer.question}</h3>
 
-            <h2 style={{ marginTop: "1.75rem" }}>
-              Sample answer
-            </h2>
-            <p>
-              <strong>Q:</strong> {demo.sampleAnswer.question}
-            </p>
-            <p>{demo.sampleAnswer.answer}</p>
+              <div className="turn-response">
+                <div className="turn-response-header">
+                  <span className="turn-response-label">
+                    HouseIQ
+                  </span>
+                </div>
+                <div className="answer-box">
+                  {demo.sampleAnswer.answer}
+                </div>
+
+                {citations.length > 0 && (
+                  <section className="clarifying-section">
+                    <h4>Evidence</h4>
+                    <ul className="timeline-list">
+                      {citations.map((citation, index) => (
+                        <li
+                          key={
+                            citation.id ||
+                            `${citation.page}-${index}`
+                          }
+                        >
+                          <strong>
+                            {citation.title ||
+                              citation.label ||
+                              "Source"}
+                            {citation.page
+                              ? ` · p. ${citation.page}`
+                              : ""}
+                          </strong>
+                          {citation.passage ? (
+                            <p className="evidence-quote">
+                              &ldquo;{citation.passage}&rdquo;
+                            </p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            </section>
           </>
         )}
       </section>

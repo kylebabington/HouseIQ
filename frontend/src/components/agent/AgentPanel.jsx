@@ -411,9 +411,9 @@ function AgentPanel({
                               : ""}
                           </strong>
                           {citation.passage ? (
-                            <em>
+                            <p className="evidence-quote">
                               &ldquo;{citation.passage}&rdquo;
-                            </em>
+                            </p>
                           ) : null}
                         </li>
                       ))}
