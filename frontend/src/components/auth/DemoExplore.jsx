@@ -224,7 +224,10 @@ export default function DemoExplore({
   const projects = demo?.projects || [];
   const assets = demo?.assets || [];
   const memories = demo?.memories || [];
-  const documents = demo?.documents || [];
+  const documents = useMemo(
+    () => demo?.documents || [],
+    [demo?.documents]
+  );
   const needs = demo?.needs || [];
   const timeline = demo?.timeline || [];
   const agentRuns = demo?.agentRuns || [];
