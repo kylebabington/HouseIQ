@@ -26,6 +26,10 @@ import {
     createMemoryRecord,
 } from "../services/recordHelpers.js";
 
+import {
+    attachEvidenceToRows,
+} from "../services/entityResolution.js";
+
 export function createHomeResourcesRouter() {
     const router = Router();
 
@@ -104,14 +108,21 @@ export function createHomeResourcesRouter() {
           FROM memories
           LEFT JOIN documents
             ON documents.id = memories.source_document_id
-                        WHERE memories.home_id = $1
-                          AND COALESCE(memories.verification_status, 'accepted') <> 'rejected'
+                WHERE memories.home_id = $1
+                  AND COALESCE(memories.verification_status, 'accepted') <> 'rejected'
+                  AND memories.merged_into_id IS NULL
                         ORDER BY memories.created_at DESC
           `,
                     [homeId]
                 );
 
-                res.json(result.rows);
+                res.json(
+                    await attachEvidenceToRows(
+                        result.rows,
+                        "memory",
+                        homeId
+                    )
+                );
             } catch (error) {
                 console.error("Error fetching memories:", error);
                 res.status(500).json({
@@ -204,6 +215,7 @@ export function createHomeResourcesRouter() {
                     ON documents.id = home_issues.source_document_id
                 WHERE home_issues.home_id = $1
                   AND COALESCE(home_issues.verification_status, 'accepted') <> 'rejected'
+                  AND home_issues.merged_into_id IS NULL
                 ORDER BY
                     CASE home_issues.priority
                         WHEN 'urgent' THEN 1
@@ -217,7 +229,13 @@ export function createHomeResourcesRouter() {
                     [homeId]
                 );
 
-                res.json(result.rows);
+                res.json(
+                    await attachEvidenceToRows(
+                        result.rows,
+                        "issue",
+                        homeId
+                    )
+                );
             } catch (error) {
                 console.error(
                     "Error fetching home issues:",
@@ -259,6 +277,7 @@ export function createHomeResourcesRouter() {
                     ON documents.id = home_projects.source_document_id
                 WHERE home_projects.home_id = $1
                   AND COALESCE(home_projects.verification_status, 'accepted') <> 'rejected'
+                  AND home_projects.merged_into_id IS NULL
                 ORDER BY home_projects.created_at DESC
                 `,
                     [homeId]
@@ -311,7 +330,13 @@ export function createHomeResourcesRouter() {
                     }
                 );
 
-                res.json(projectsWithTasks);
+                res.json(
+                    await attachEvidenceToRows(
+                        projectsWithTasks,
+                        "project",
+                        homeId
+                    )
+                );
             } catch (error) {
                 console.error(
                     "Error fetching home projects:",
@@ -350,12 +375,19 @@ export function createHomeResourcesRouter() {
                     ON documents.id = home_assets.source_document_id
                 WHERE home_assets.home_id = $1
                   AND COALESCE(home_assets.verification_status, 'accepted') <> 'rejected'
+                  AND home_assets.merged_into_id IS NULL
                 ORDER BY home_assets.created_at DESC
                 `,
                     [homeId]
                 );
 
-                res.json(result.rows);
+                res.json(
+                    await attachEvidenceToRows(
+                        result.rows,
+                        "asset",
+                        homeId
+                    )
+                );
             } catch (error) {
                 console.error(
                     "Error fetching home assets:",

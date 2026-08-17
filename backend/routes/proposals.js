@@ -9,6 +9,10 @@ import {
     requireHomeOwnership,
 } from "../middleware/ownership.js";
 import { isValidUuid } from "../lib/validation.js";
+import {
+    reconcileHomeRecords,
+    reviewDuplicateFlag,
+} from "../services/entityResolution.js";
 
 const RECORD_TABLES = {
     memory: "memories",
@@ -28,7 +32,7 @@ export function createProposalsRouter() {
             try {
                 const homeId = req.authorizedHomeId;
 
-                const [memories, issues, projects, assets] =
+                const [memories, issues, projects, assets, flags] =
                     await Promise.all([
                         pool.query(
                             `
@@ -84,6 +88,24 @@ export function createProposalsRouter() {
                             `,
                             [homeId]
                         ),
+                        pool.query(
+                            `
+                            SELECT
+                                id,
+                                record_kind,
+                                record_id,
+                                canonical_record_id,
+                                score,
+                                reason,
+                                status,
+                                created_at
+                            FROM record_duplicate_flags
+                            WHERE home_id = $1
+                              AND status = 'open'
+                            ORDER BY created_at DESC
+                            `,
+                            [homeId]
+                        ).catch(() => ({ rows: [] })),
                     ]);
 
                 return res.json({
@@ -91,11 +113,13 @@ export function createProposalsRouter() {
                     issues: issues.rows,
                     projects: projects.rows,
                     assets: assets.rows,
+                    duplicateFlags: flags.rows,
                     total:
                         memories.rows.length +
                         issues.rows.length +
                         projects.rows.length +
-                        assets.rows.length,
+                        assets.rows.length +
+                        flags.rows.length,
                 });
             } catch (error) {
                 console.error("Error loading proposals:", error);
@@ -201,6 +225,66 @@ export function createProposalsRouter() {
                 console.error("Error accepting proposals:", error);
                 return res.status(500).json({
                     error: "Failed to accept proposals",
+                });
+            }
+        }
+    );
+
+    router.post(
+        "/homes/:homeId/records/reconcile",
+        requireAuth,
+        requireHomeOwnership,
+        async (req, res) => {
+            try {
+                const summary = await reconcileHomeRecords(
+                    req.authorizedHomeId
+                );
+                return res.json(summary);
+            } catch (error) {
+                console.error("Record reconcile failed:", error);
+                return res.status(500).json({
+                    error: "Failed to reconcile home records",
+                });
+            }
+        }
+    );
+
+    router.post(
+        "/homes/:homeId/duplicate-flags/:flagId/:decision",
+        requireAuth,
+        requireHomeOwnership,
+        async (req, res) => {
+            try {
+                const { flagId, decision } = req.params;
+                if (!isValidUuid(flagId)) {
+                    return res.status(400).json({
+                        error: "A valid flag ID is required",
+                    });
+                }
+
+                if (decision !== "same" && decision !== "distinct") {
+                    return res.status(400).json({
+                        error: "Decision must be same or distinct",
+                    });
+                }
+
+                const flag = await reviewDuplicateFlag({
+                    homeId: req.authorizedHomeId,
+                    flagId,
+                    status: decision,
+                });
+
+                if (!flag) {
+                    return res.status(404).json({
+                        error: "Duplicate flag not found",
+                    });
+                }
+
+                return res.json({ flag });
+            } catch (error) {
+                console.error("Duplicate review failed:", error);
+                return res.status(500).json({
+                    error: "Failed to review duplicate flag",
                 });
             }
         }

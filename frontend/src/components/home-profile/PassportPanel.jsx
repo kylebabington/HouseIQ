@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import api from "../../api.js";
 import {
+  documentDisplayTitle,
   formatLabel,
   formatMonthYear,
   formatYear,
@@ -76,7 +77,7 @@ function maintenanceLine(event) {
 }
 
 function documentLine(doc) {
-  const name = doc.file_name || "Document";
+  const name = documentDisplayTitle(doc);
   const type = doc.document_type
     ? formatLabel(doc.document_type)
     : null;
