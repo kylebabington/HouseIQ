@@ -725,6 +725,49 @@ beforeEach(() => {
                 return { rows: [], rowCount: 0 };
             }
 
+            if (
+                normalizedSql.includes(
+                    "update documents"
+                ) &&
+                normalizedSql.includes(
+                    "set metadata = $1::jsonb"
+                )
+            ) {
+                const [
+                    metadataJson,
+                    documentId,
+                    homeId,
+                ] = parameters;
+
+                const document =
+                    testDatabase.documents.find(
+                        (candidate) =>
+                            candidate.id ===
+                                documentId &&
+                            candidate.home_id ===
+                                homeId
+                    );
+
+                if (!document) {
+                    return {
+                        rows: [],
+                        rowCount: 0,
+                    };
+                }
+
+                document.metadata =
+                    typeof metadataJson === "string"
+                        ? JSON.parse(metadataJson)
+                        : metadataJson;
+                document.updated_at =
+                    new Date().toISOString();
+
+                return {
+                    rows: [{ ...document }],
+                    rowCount: 1,
+                };
+            }
+
 
             throw new Error(
                 [
@@ -1425,6 +1468,86 @@ describe(
                 expect(
                     mockDeleteDocumentFromS3
                 ).toHaveBeenCalled();
+            }
+        );
+    }
+);
+
+
+describe(
+    "PATCH /api/documents/:documentId",
+    () => {
+        test(
+            "lets the owner change the displayed document title",
+            async () => {
+                const response =
+                    await request(app)
+                        .patch(
+                            `/api/documents/${USER_A_DOCUMENT_ID}`
+                        )
+                        .set(
+                            "x-test-user-id",
+                            USER_A_ID
+                        )
+                        .send({
+                            displayTitle:
+                                "2019 chimney inspection",
+                        });
+
+                expect(response.status).toBe(200);
+                expect(
+                    response.body.file_name
+                ).toBe("user-a-inspection.pdf");
+                expect(
+                    response.body.metadata.displayTitle
+                ).toBe("2019 chimney inspection");
+                expect(
+                    response.body.metadata.s3Key
+                ).toBe(
+                    "homes/user-a/inspection.pdf"
+                );
+            }
+        );
+
+        test(
+            "returns 404 when User B tries to rename User A's document",
+            async () => {
+                const response =
+                    await request(app)
+                        .patch(
+                            `/api/documents/${USER_A_DOCUMENT_ID}`
+                        )
+                        .set(
+                            "x-test-user-id",
+                            USER_B_ID
+                        )
+                        .send({
+                            displayTitle:
+                                "Should not stick",
+                        });
+
+                expect(response.status).toBe(404);
+                expect(response.body).toEqual({
+                    error: "Document not found",
+                });
+            }
+        );
+
+        test(
+            "returns 400 when displayTitle is missing",
+            async () => {
+                const response =
+                    await request(app)
+                        .patch(
+                            `/api/documents/${USER_A_DOCUMENT_ID}`
+                        )
+                        .set(
+                            "x-test-user-id",
+                            USER_A_ID
+                        )
+                        .send({});
+
+                expect(response.status).toBe(400);
             }
         );
     }

@@ -35,7 +35,6 @@ import {
     MAX_ISSUES_PER_RUN,
     MAX_MEMORIES_PER_RUN,
     MAX_PROJECTS_PER_RUN,
-    normalizeAssetKey,
     prepareMemoryEmbedding,
 } from "../services/recordHelpers.js";
 
@@ -54,6 +53,13 @@ import {
     splitExtractedTextIntoChunks,
     storeDocumentChunks,
 } from "../services/documentChunks.js";
+
+import { extractEventId } from "../lib/entityKeys.js";
+
+import {
+    loadRecordCatalog,
+    resolveOrCreateRecord,
+} from "../services/entityResolution.js";
 
 export function createDocumentsRouter(upload) {
     const router = Router();
@@ -208,6 +214,92 @@ export function createDocumentsRouter(upload) {
                 return res.status(500).json({
                     error:
                         "Could not open the original document",
+                });
+            }
+        }
+    );
+
+    // ---------------------------------------------------------
+    // RENAME HOW A DOCUMENT IS DISPLAYED
+    // ---------------------------------------------------------
+    //
+    // The original file_name (and S3 object) stay unchanged.
+    // Homeowners can set a readable title after upload.
+    //
+    router.patch(
+        "/documents/:documentId",
+        requireAuth,
+        requireDocumentWriteAccess,
+        async (req, res) => {
+            const document = req.authorizedDocument;
+            const rawTitle =
+                req.body?.displayTitle ??
+                req.body?.title;
+
+            if (typeof rawTitle !== "string") {
+                return res.status(400).json({
+                    error:
+                        "Provide a displayTitle string",
+                });
+            }
+
+            const displayTitle = rawTitle.trim();
+            const metadata = {
+                ...(document.metadata &&
+                typeof document.metadata === "object"
+                    ? document.metadata
+                    : {}),
+            };
+
+            if (displayTitle) {
+                metadata.displayTitle = displayTitle;
+            } else {
+                delete metadata.displayTitle;
+            }
+
+            try {
+                const result = await pool.query(
+                    `
+                    UPDATE documents
+                    SET
+                        metadata = $1::JSONB,
+                        updated_at = now()
+                    WHERE id = $2
+                      AND home_id = $3
+                    RETURNING
+                        id,
+                        home_id,
+                        document_type,
+                        file_name,
+                        source_url,
+                        summary,
+                        metadata,
+                        created_at,
+                        updated_at
+                    `,
+                    [
+                        JSON.stringify(metadata),
+                        document.id,
+                        document.home_id,
+                    ]
+                );
+
+                if (result.rows.length === 0) {
+                    return res.status(404).json({
+                        error: "Document not found",
+                    });
+                }
+
+                return res.json(result.rows[0]);
+            } catch (error) {
+                console.error(
+                    "Document title update failed:",
+                    error
+                );
+
+                return res.status(500).json({
+                    error:
+                        "Could not update the document title",
                 });
             }
         }
@@ -486,49 +578,9 @@ export function createDocumentsRouter(upload) {
                     analysis.assetsToCreate || []
                 ).slice(0, MAX_ASSETS_PER_RUN);
 
-                const existingAssetsResult =
-                    await pool.query(
-                        `
-                        SELECT asset_type, name
-                        FROM home_assets
-                        WHERE home_id = $1
-                        `,
-                        [homeId]
-                    );
-
-                const existingAssetKeys = new Set(
-                    existingAssetsResult.rows.map(
-                        (row) =>
-                            normalizeAssetKey(
-                                row.asset_type,
-                                row.name
-                            )
-                    )
+                const catalog = await loadRecordCatalog(
+                    homeId
                 );
-
-                assetsToCreate =
-                    assetsToCreate.filter(
-                        (assetInput) => {
-                            const key =
-                                normalizeAssetKey(
-                                    assetInput.assetType,
-                                    assetInput.name
-                                );
-
-                            if (
-                                existingAssetKeys.has(
-                                    key
-                                )
-                            ) {
-                                return false;
-                            }
-
-                            existingAssetKeys.add(
-                                key
-                            );
-                            return true;
-                        }
-                    );
 
                 // Embed memories before opening a DB transaction.
                 const memoryEmbeddings =
@@ -669,6 +721,11 @@ export function createDocumentsRouter(upload) {
 
                                 totalAmount:
                                     analysis.totalAmount,
+
+                                eventId:
+                                    extractEventId(
+                                        req.file.originalname
+                                    ),
                             }),
                         ]
                     );
@@ -706,6 +763,7 @@ export function createDocumentsRouter(upload) {
                     issues: [],
                     projects: [],
                     assets: [],
+                    linked: [],
                 };
 
                 const actionsTaken = [
@@ -735,73 +793,87 @@ export function createDocumentsRouter(upload) {
                     const memoryInput =
                         memoriesToCreate[memoryIndex];
 
-                    const memory =
-                        await createMemoryRecord({
+                    const memoryEvidence =
+                        findEvidencePassage(
+                            extractedText,
+                            memoryInput.evidencePassage ||
+                                memoryInput.content ||
+                                memoryInput.title ||
+                                ""
+                        );
+
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "memory",
+                            input: memoryInput,
+                            existing: catalog.memories,
                             homeId,
-
-                            title:
-                                memoryInput.title,
-
-                            category:
-                                memoryInput.category,
-
-                            content:
-                                memoryInput.content,
-
-                            importance:
-                                memoryInput.importance,
-
-                            metadata: {
-                                source:
-                                    "document_analysis",
-
-                                documentId:
-                                    document.id,
-
-                                fileName:
-                                    req.file.originalname,
-
-                                s3Key:
-                                    uploadedS3Object.key,
-                            },
-
-                            embeddingSql:
-                                memoryEmbeddings[
-                                    memoryIndex
-                                ],
-
-                            sourceDocumentId:
-                                document.id,
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId: document.id,
+                            fileName: req.file.originalname,
                             evidencePassage:
                                 memoryInput.evidencePassage ||
-                                findEvidencePassage(
-                                    extractedText,
-                                    memoryInput.content ||
-                                        memoryInput.title ||
-                                        ""
-                                ).passage,
-
+                                memoryEvidence.passage,
+                            evidencePage:
+                                memoryEvidence.page,
                             client,
+                            create: () =>
+                                createMemoryRecord({
+                                    homeId,
+                                    title: memoryInput.title,
+                                    category:
+                                        memoryInput.category,
+                                    content:
+                                        memoryInput.content,
+                                    importance:
+                                        memoryInput.importance,
+                                    metadata: {
+                                        source:
+                                            "document_analysis",
+                                        documentId:
+                                            document.id,
+                                        fileName:
+                                            req.file.originalname,
+                                        eventId:
+                                            extractEventId(
+                                                req.file.originalname
+                                            ),
+                                        s3Key:
+                                            uploadedS3Object.key,
+                                    },
+                                    embeddingSql:
+                                        memoryEmbeddings[
+                                            memoryIndex
+                                        ],
+                                    sourceDocumentId:
+                                        document.id,
+                                    verificationStatus:
+                                        "proposed",
+                                    evidencePassage:
+                                        memoryInput.evidencePassage ||
+                                        memoryEvidence.passage,
+                                    client,
+                                }),
                         });
 
-                    createdRecords.memories.push(
-                        memory
-                    );
-
-                    actionsTaken.push({
-                        type:
-                            "memory_created",
-
-                        recordId:
-                            memory.id,
-
-                        title:
-                            memory.title,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "memory_linked",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.memories.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "memory_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    }
                 }
 
 
@@ -822,58 +894,66 @@ export function createDocumentsRouter(upload) {
                                 ""
                         );
 
-                    const issue =
-                        await createIssueRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "issue",
+                            input: issueInput,
+                            existing: catalog.issues,
                             homeId,
-
-                            title:
-                                issueInput.title,
-
-                            description:
-                                issueInput.description,
-
-                            priority:
-                                issueInput.priority,
-
-                            category:
-                                issueInput.category,
-
-                            suspectedCause:
-                                issueInput.suspectedCause,
-
-                            recommendedNextStep:
-                                issueInput.recommendedNextStep,
-
-                            sourceDocumentId:
-                                document.id,
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId: document.id,
+                            fileName: req.file.originalname,
                             evidencePassage:
                                 issueInput.evidencePassage ||
                                 issueEvidence.passage,
-
                             evidencePage:
                                 issueEvidence.page,
-
                             client,
+                            create: () =>
+                                createIssueRecord({
+                                    homeId,
+                                    title: issueInput.title,
+                                    description:
+                                        issueInput.description,
+                                    priority:
+                                        issueInput.priority,
+                                    category:
+                                        issueInput.category,
+                                    suspectedCause:
+                                        issueInput.suspectedCause,
+                                    recommendedNextStep:
+                                        issueInput.recommendedNextStep,
+                                    sourceDocumentId:
+                                        document.id,
+                                    verificationStatus:
+                                        "proposed",
+                                    evidencePassage:
+                                        issueInput.evidencePassage ||
+                                        issueEvidence.passage,
+                                    evidencePage:
+                                        issueEvidence.page,
+                                    client,
+                                }),
                         });
 
-                    createdRecords.issues.push(
-                        issue
-                    );
-
-                    actionsTaken.push({
-                        type:
-                            "issue_created",
-
-                        recordId:
-                            issue.id,
-
-                        title:
-                            issue.title,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "issue_linked",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.issues.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "issue_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    }
                 }
 
 
@@ -894,71 +974,72 @@ export function createDocumentsRouter(upload) {
                                 ""
                         );
 
-                    const project =
-                        await createProjectRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "project",
+                            input: projectInput,
+                            existing: catalog.projects,
                             homeId,
-
-                            title:
-                                projectInput.title,
-
-                            description:
-                                projectInput.description,
-
-                            priority:
-                                projectInput.priority,
-
-                            estimatedCostLow:
-                                projectInput
-                                    .estimatedCostLow,
-
-                            estimatedCostHigh:
-                                projectInput
-                                    .estimatedCostHigh,
-
-                            diyDifficulty:
-                                projectInput
-                                    .diyDifficulty,
-
-                            safetyNotes:
-                                projectInput
-                                    .safetyNotes,
-
-                            tasks:
-                                projectInput.tasks,
-
-                            sourceDocumentId:
-                                document.id,
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId: document.id,
+                            fileName: req.file.originalname,
                             evidencePassage:
                                 projectInput.evidencePassage ||
                                 projectEvidence.passage,
-
                             evidencePage:
                                 projectEvidence.page,
-
                             client,
+                            create: () =>
+                                createProjectRecord({
+                                    homeId,
+                                    title: projectInput.title,
+                                    description:
+                                        projectInput.description,
+                                    priority:
+                                        projectInput.priority,
+                                    estimatedCostLow:
+                                        projectInput.estimatedCostLow,
+                                    estimatedCostHigh:
+                                        projectInput.estimatedCostHigh,
+                                    diyDifficulty:
+                                        projectInput.diyDifficulty,
+                                    safetyNotes:
+                                        projectInput.safetyNotes,
+                                    tasks: projectInput.tasks,
+                                    sourceDocumentId:
+                                        document.id,
+                                    verificationStatus:
+                                        "proposed",
+                                    evidencePassage:
+                                        projectInput.evidencePassage ||
+                                        projectEvidence.passage,
+                                    evidencePage:
+                                        projectEvidence.page,
+                                    client,
+                                }),
                         });
 
-                    createdRecords.projects.push(
-                        project
-                    );
-
-                    actionsTaken.push({
-                        type:
-                            "project_created",
-
-                        recordId:
-                            project.id,
-
-                        title:
-                            project.title,
-
-                        taskCount:
-                            project.tasks.length,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "project_linked",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.projects.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "project_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                            taskCount:
+                                resolved.record.tasks
+                                    ?.length || 0,
+                        });
+                    }
                 }
 
 
@@ -978,73 +1059,76 @@ export function createDocumentsRouter(upload) {
                                 ""
                         );
 
-                    const asset =
-                        await createAssetRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "asset",
+                            input: assetInput,
+                            existing: catalog.assets,
                             homeId,
-
-                            assetType:
-                                assetInput.assetType,
-
-                            name:
-                                assetInput.name,
-
-                            brand:
-                                assetInput.brand,
-
-                            model:
-                                assetInput.model,
-
-                            serialNumber:
-                                assetInput.serialNumber,
-
-                            location:
-                                assetInput.location,
-
-                            notes:
-                                assetInput.notes,
-
-                            installDate:
-                                assetInput.installDate ||
-                                null,
-
-                            purchaseDate:
-                                assetInput.purchaseDate ||
-                                null,
-
-                            warrantyExpiration:
-                                assetInput.warrantyExpiration ||
-                                null,
-
-                            sourceDocumentId:
-                                document.id,
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId: document.id,
+                            fileName: req.file.originalname,
                             evidencePassage:
                                 assetInput.evidencePassage ||
                                 assetEvidence.passage,
-
                             evidencePage:
                                 assetEvidence.page,
-
                             client,
+                            create: () =>
+                                createAssetRecord({
+                                    homeId,
+                                    assetType:
+                                        assetInput.assetType,
+                                    name: assetInput.name,
+                                    brand: assetInput.brand,
+                                    model: assetInput.model,
+                                    serialNumber:
+                                        assetInput.serialNumber,
+                                    location:
+                                        assetInput.location,
+                                    notes: assetInput.notes,
+                                    installDate:
+                                        assetInput.installDate ||
+                                        null,
+                                    purchaseDate:
+                                        assetInput.purchaseDate ||
+                                        null,
+                                    warrantyExpiration:
+                                        assetInput.warrantyExpiration ||
+                                        null,
+                                    sourceDocumentId:
+                                        document.id,
+                                    verificationStatus:
+                                        "proposed",
+                                    evidencePassage:
+                                        assetInput.evidencePassage ||
+                                        assetEvidence.passage,
+                                    evidencePage:
+                                        assetEvidence.page,
+                                    client,
+                                }),
                         });
 
-                    createdRecords.assets.push(
-                        asset
-                    );
-
-                    actionsTaken.push({
-                        type:
-                            "asset_created",
-
-                        recordId:
-                            asset.id,
-
-                        title:
-                            asset.name,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "asset_linked",
+                            recordId: resolved.record.id,
+                            title:
+                                resolved.record.name ||
+                                resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.assets.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "asset_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.name,
+                        });
+                    }
                 }
 
 
