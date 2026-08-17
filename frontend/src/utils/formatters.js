@@ -43,6 +43,41 @@ export function formatDate(value) {
   return date.toLocaleString();
 }
 
+export function countLabel(count, singular, plural = `${singular}s`) {
+  const n = Number(count) || 0;
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/**
+ * Compact current-home line for the workspace header.
+ *
+ * Example: "Built 1978 · Indianapolis, IN"
+ */
+export function homeSubtitle(home, profile) {
+  const parts = [];
+  const year =
+    home?.year_built ||
+    profile?.yearBuilt ||
+    profile?.year_built;
+
+  if (year) {
+    parts.push(`Built ${year}`);
+  }
+
+  const place = [
+    profile?.city,
+    profile?.state,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  if (place) {
+    parts.push(place);
+  }
+
+  return parts.join(" · ");
+}
+
 /**
  * Year only, for equipment install dates.
  */
@@ -59,6 +94,28 @@ export function formatYear(value) {
 
   const match = String(value).match(/\d{4}/);
   return match ? match[0] : null;
+}
+
+/**
+ * Short month + day, for the History timeline.
+ *
+ * Examples: "Aug 4", "Apr 18"
+ */
+export function formatShortDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /**
@@ -110,6 +167,30 @@ export function formatCurrency(value) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(number);
+}
+
+/**
+ * Homeowner-facing document title. The original file_name stays
+ * on the record for provenance and downloads.
+ */
+export function documentDisplayTitle(documentRecord) {
+  if (!documentRecord) {
+    return "Untitled document";
+  }
+
+  const custom =
+    documentRecord.metadata?.displayTitle ||
+    documentRecord.display_title ||
+    documentRecord.displayTitle;
+  const trimmed =
+    typeof custom === "string" ? custom.trim() : "";
+
+  return (
+    trimmed ||
+    documentRecord.file_name ||
+    documentRecord.fileName ||
+    "Untitled document"
+  );
 }
 
 /**
