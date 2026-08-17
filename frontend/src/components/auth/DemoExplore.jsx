@@ -230,7 +230,10 @@ export default function DemoExplore({
   );
   const needs = demo?.needs || [];
   const timeline = demo?.timeline || [];
-  const agentRuns = demo?.agentRuns || [];
+  const agentRuns = useMemo(
+    () => demo?.agentRuns || [],
+    [demo?.agentRuns]
+  );
   const proposals = demo?.proposals || {
     memories: [],
     issues: [],
