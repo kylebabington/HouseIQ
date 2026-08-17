@@ -3,7 +3,8 @@
 import { formatLabel } from "../../utils/formatters.js";
 
 /**
- * Shows where a record came from (document upload).
+ * Shows where a record came from. A canonical record can cite
+ * several uploaded documents.
  */
 function ProvenanceLine({
   sourceFileName,
@@ -11,53 +12,75 @@ function ProvenanceLine({
   sourceDocumentId,
   evidencePassage,
   evidencePage,
+  evidenceSources,
   onOpenDocument,
 }) {
-  if (
-    !sourceFileName &&
-    !sourceDocumentId &&
-    !evidencePassage
-  ) {
+  const sources =
+    Array.isArray(evidenceSources) &&
+    evidenceSources.length > 0
+      ? evidenceSources
+      : sourceFileName ||
+          sourceDocumentId ||
+          evidencePassage
+        ? [
+            {
+              fileName: sourceFileName,
+              documentType: sourceDocumentType,
+              documentId: sourceDocumentId,
+              passage: evidencePassage,
+              page: evidencePage,
+            },
+          ]
+        : [];
+
+  if (sources.length === 0) {
     return null;
   }
 
-  const label =
-    sourceFileName ||
-    "Uploaded document";
-
-  const typeLabel = sourceDocumentType
-    ? formatLabel(sourceDocumentType)
-    : null;
-
   return (
     <div className="provenance-line">
-      {(sourceFileName || sourceDocumentId) && (
-        <p>
-          From{" "}
-          {sourceDocumentId && onOpenDocument ? (
-            <button
-              type="button"
-              className="provenance-link"
-              onClick={() =>
-                onOpenDocument(sourceDocumentId)
-              }
-            >
-              {label}
-            </button>
-          ) : (
-            <span>{label}</span>
-          )}
-          {typeLabel ? ` · ${typeLabel}` : null}
-          {evidencePage
-            ? ` · p. ${evidencePage}`
-            : null}
-        </p>
-      )}
-      {evidencePassage ? (
-        <p className="evidence-quote">
-          &ldquo;{evidencePassage}&rdquo;
-        </p>
-      ) : null}
+      {sources.map((source, index) => {
+        const label =
+          source.fileName ||
+          "Uploaded document";
+        const typeLabel = source.documentType
+          ? formatLabel(source.documentType)
+          : null;
+        const documentId = source.documentId;
+        const key = `${documentId || label}-${index}`;
+
+        return (
+          <div key={key}>
+            {(source.fileName || documentId) && (
+              <p>
+                From{" "}
+                {documentId && onOpenDocument ? (
+                  <button
+                    type="button"
+                    className="provenance-link"
+                    onClick={() =>
+                      onOpenDocument(documentId)
+                    }
+                  >
+                    {label}
+                  </button>
+                ) : (
+                  <span>{label}</span>
+                )}
+                {typeLabel ? ` · ${typeLabel}` : null}
+                {source.page
+                  ? ` · p. ${source.page}`
+                  : null}
+              </p>
+            )}
+            {source.passage ? (
+              <p className="evidence-quote">
+                &ldquo;{source.passage}&rdquo;
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
