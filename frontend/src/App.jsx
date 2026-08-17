@@ -27,6 +27,7 @@ import HomeProfile from "./components/home-profile/HomeProfile.jsx";
 import OnboardingGate from "./components/home-profile/OnboardingGate.jsx";
 import ShareHomePanel from "./components/home-profile/ShareHomePanel.jsx";
 import PassportPanel from "./components/home-profile/PassportPanel.jsx";
+import HomesManager from "./components/home-profile/HomesManager.jsx";
 import TimelinePanel from "./components/dashboard/TimelinePanel.jsx";
 
 import IssuesPanel from "./components/dashboard/IssuesPanel.jsx";
@@ -34,10 +35,19 @@ import ProjectsPanel from "./components/dashboard/ProjectsPanel.jsx";
 import AssetsPanel from "./components/dashboard/AssetsPanel.jsx";
 import MemoriesPanel from "./components/dashboard/MemoriesPanel.jsx";
 import DocumentsPanel from "./components/dashboard/DocumentsPanel.jsx";
-import NeedsBoard from "./components/dashboard/NeedsBoard.jsx";
 import ProposalsPanel from "./components/dashboard/ProposalsPanel.jsx";
+import OverviewPanel from "./components/dashboard/OverviewPanel.jsx";
+import PrimaryNav from "./components/layout/PrimaryNav.jsx";
+import SubNav from "./components/layout/SubNav.jsx";
+import CollapsibleSection from "./components/layout/CollapsibleSection.jsx";
 
-import { formatLabel } from "./utils/formatters.js";
+import {
+  HOME_SUBTABS,
+  RECORD_TABS,
+  locationForLegacyTab,
+} from "./navigation.js";
+
+import { formatLabel, homeSubtitle } from "./utils/formatters.js";
 
 
 // ---------------------------------------------------------
@@ -167,8 +177,12 @@ function App() {
     fetchHomeProfile,
     saveHomeProfile,
 
+    activeSection,
+    setActiveSection,
     activeTab,
     setActiveTab,
+    homeSubTab,
+    setHomeSubTab,
     isLoadingDashboard,
     dashboardError,
     refreshHomeDashboard,
@@ -213,6 +227,7 @@ function App() {
     openOriginalDocument,
     openDocumentById,
     deleteDocument,
+    renameDocument,
 
     memoryForm,
     setMemoryForm,
@@ -224,6 +239,7 @@ function App() {
     acceptProposal,
     rejectProposal,
     acceptAllProposals,
+    reviewDuplicate,
   } = useHomeDashboard({
     isAuthenticated,
     isAuthLoading,
@@ -268,7 +284,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!(selectedHome?.id && activeTab === "profile")) {
+    if (!selectedHome?.id) {
       return undefined;
     }
 
@@ -301,7 +317,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedHome?.id, activeTab]);
+  }, [selectedHome?.id]);
 
   async function refreshDashboardForSelectedHome() {
     if (!selectedHome?.id) {
@@ -309,32 +325,48 @@ function App() {
     }
 
     await refreshHomeDashboard(selectedHome.id);
+    await refreshTimeline();
   }
 
 
   // -----------------------------------------------------
-  // SCROLL TO (AND OPTIONALLY FOCUS) A DEMO SECTION
+  // PAGE NAVIGATION
   // -----------------------------------------------------
   //
-  // Used by the compact demo CTA row so a new user can jump
-  // straight to "upload a document" or "ask HouseIQ" without
-  // hunting for those sections on a long page.
+  // Six primary sections behave like pages. Records still
+  // uses activeTab; Home uses homeSubTab.
   //
-  function scrollToSection(elementId, { focus } = {}) {
-    const element =
-      document.getElementById(elementId);
-
-    if (!element) {
-      return;
+  function applyLocation(location) {
+    if (location.section) {
+      setActiveSection(location.section);
     }
 
-    element.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
+    if (location.tab) {
+      setActiveTab(location.tab);
+    }
 
-    if (focus) {
-      element.focus({ preventScroll: true });
+    if (location.homeSubTab) {
+      setHomeSubTab(location.homeSubTab);
+    }
+  }
+
+  function navigateToTab(tabName) {
+    applyLocation(locationForLegacyTab(tabName));
+  }
+
+  function navigateToSection(section, options = {}) {
+    setActiveSection(section);
+
+    if (section === "home" && options.homeSubTab) {
+      setHomeSubTab(options.homeSubTab);
+    }
+
+    if (options.focus) {
+      window.setTimeout(() => {
+        document
+          .getElementById("houseiq-agent-textarea")
+          ?.focus({ preventScroll: true });
+      }, 80);
     }
   }
 
@@ -364,6 +396,47 @@ function App() {
     );
   }
 
+  async function seedIndianapolisRanch() {
+    try {
+      const response = await api.post(
+        "/demo/seed-indianapolis-ranch"
+      );
+      await fetchHomes();
+      if (response.data?.home) {
+        selectHome(response.data.home);
+      }
+    } catch (error) {
+      console.error("Demo seed failed:", error);
+      window.alert(
+        error.response?.data?.error ||
+          "Could not seed demo home"
+      );
+    }
+  }
+
+  function goToYourHomes() {
+    navigateToSection("home", { homeSubTab: "homes" });
+  }
+
+  function renderHomesManager() {
+    return (
+      <HomesManager
+        homes={homes}
+        selectedHome={selectedHome}
+        onSelectHome={selectHome}
+        homeForm={homeForm}
+        setHomeForm={setHomeForm}
+        onCreateHome={createHome}
+        createHomeError={createHomeError}
+        homesError={homesError}
+        onDeleteHome={deleteHome}
+        isHomeOwner={isHomeOwner}
+        onSeedDemo={seedIndianapolisRanch}
+        profile={homeProfile}
+      />
+    );
+  }
+
 
   // -----------------------------------------------------
   // CHOOSE WHICH TAB CONTENT TO DISPLAY
@@ -374,11 +447,12 @@ function App() {
       issue: "issues",
       project: "projects",
       lifecycle: "assets",
+      asset: "assets",
       seasonal: "profile",
     };
 
     const tab = tabByKind[item.kind] || "issues";
-    setActiveTab(tab);
+    navigateToTab(tab);
     setHighlightRecord({
       kind: item.kind,
       id: item.id,
@@ -395,35 +469,8 @@ function App() {
     }, 100);
   }
 
-  function renderActiveTab() {
+  function renderRecordsTab() {
     switch (activeTab) {
-      case "profile":
-        return (
-          <>
-            {renderHomeProfile()}
-            <ShareHomePanel
-              members={homeMembers}
-              isOwner={isHomeOwner}
-              inviteEmail={inviteEmail}
-              setInviteEmail={setInviteEmail}
-              inviteRole={inviteRole}
-              setInviteRole={setInviteRole}
-              inviteError={inviteError}
-              inviteSuccess={inviteSuccess}
-              onInvite={inviteHomeMember}
-              onRemove={removeHomeMember}
-              isBusy={isInviting}
-            />
-            <PassportPanel homeId={selectedHome?.id} />
-            <TimelinePanel
-              events={timelineEvents}
-              isLoading={isLoadingTimeline}
-              error={timelineError}
-              onRefresh={refreshTimeline}
-            />
-          </>
-        );
-
       case "projects":
         return (
           <ProjectsPanel
@@ -460,29 +507,29 @@ function App() {
 
       case "memories":
         return (
-          <MemoriesPanel
-            memories={memories}
-            homeId={selectedHome?.id}
-            onRecordsChanged={
-              refreshDashboardForSelectedHome
-            }
-            onOpenDocument={openDocumentById}
-            highlightId={
-              highlightRecord?.kind === "memory"
-                ? highlightRecord.id
-                : null
-            }
-          />
-        );
-
-      case "documents":
-        return (
-          <DocumentsPanel
-            documents={documents}
-            openOriginalDocument={openOriginalDocument}
-            onDeleteDocument={deleteDocument}
-            canDelete={isHomeOwner || selectedHome?.member_role === "member"}
-          />
+          <>
+            <MemoriesPanel
+              memories={memories}
+              homeId={selectedHome?.id}
+              onRecordsChanged={
+                refreshDashboardForSelectedHome
+              }
+              onOpenDocument={openDocumentById}
+              highlightId={
+                highlightRecord?.kind === "memory"
+                  ? highlightRecord.id
+                  : null
+              }
+            />
+            {import.meta.env.DEV ? (
+              <ManualMemoryPanel
+                memoryForm={memoryForm}
+                setMemoryForm={setMemoryForm}
+                createMemory={createMemory}
+                memoryFormError={memoryFormError}
+              />
+            ) : null}
+          </>
         );
 
       case "issues":
@@ -499,6 +546,246 @@ function App() {
               highlightRecord?.kind === "issue"
                 ? highlightRecord.id
                 : null
+            }
+          />
+        );
+    }
+  }
+
+  function renderHomeSubTab() {
+    switch (homeSubTab) {
+      case "passport":
+        return (
+          <PassportPanel homeId={selectedHome?.id} />
+        );
+
+      case "sharing":
+        return (
+          <ShareHomePanel
+            members={homeMembers}
+            isOwner={isHomeOwner}
+            inviteEmail={inviteEmail}
+            setInviteEmail={setInviteEmail}
+            inviteRole={inviteRole}
+            setInviteRole={setInviteRole}
+            inviteError={inviteError}
+            inviteSuccess={inviteSuccess}
+            onInvite={inviteHomeMember}
+            onRemove={removeHomeMember}
+            isBusy={isInviting}
+          />
+        );
+
+      case "homes":
+        return renderHomesManager();
+
+      case "profile":
+      default:
+        return renderHomeProfile();
+    }
+  }
+
+  function renderActiveSection() {
+    switch (activeSection) {
+      case "ask":
+        return null;
+
+      case "documents":
+        return (
+          <div className="documents-section panel-enter">
+            <CollapsibleSection
+              title="Upload a Document"
+              summary="Inspection, invoice, warranty, or manual"
+              defaultOpen
+              openOnMobile
+            >
+            <DocumentUploadPanel
+              hideHeading
+              selectedDocumentType={
+                selectedDocumentType
+              }
+              setSelectedDocumentType={
+                setSelectedDocumentType
+              }
+              selectedDocumentFile={
+                selectedDocumentFile
+              }
+              setSelectedDocumentFile={
+                setSelectedDocumentFile
+              }
+              isUploadingDocument={
+                isUploadingDocument
+              }
+              documentUploadError={
+                documentUploadError
+              }
+              setDocumentUploadError={
+                setDocumentUploadError
+              }
+              documentUploadResult={
+                documentUploadResult
+              }
+              setDocumentUploadResult={
+                setDocumentUploadResult
+              }
+              uploadDocument={uploadDocument}
+            />
+            {documentOpenError ? (
+              <p className="error-message" role="alert">
+                {documentOpenError}
+              </p>
+            ) : null}
+            </CollapsibleSection>
+            <DocumentsPanel
+              documents={documents}
+              openOriginalDocument={openOriginalDocument}
+              onDeleteDocument={deleteDocument}
+              onRenameDocument={renameDocument}
+              canEdit={
+                isHomeOwner ||
+                selectedHome?.member_role === "member"
+              }
+            />
+          </div>
+        );
+
+      case "records":
+        return (
+          <section className="dashboard-section panel-enter">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  Long-term memory
+                </p>
+                <h3>Home records</h3>
+              </div>
+            </div>
+
+            <SubNav
+              label="Home records"
+              idPrefix="tab"
+              panelId="dashboard-tabpanel"
+              activeId={activeTab}
+              onSelect={setActiveTab}
+              items={RECORD_TABS.map((tab) => ({
+                ...tab,
+                count: {
+                  issues: issues.length,
+                  projects: projects.length,
+                  assets: assets.length,
+                  memories: memories.length,
+                }[tab.id],
+              }))}
+            />
+
+            {dashboardError && (
+              <div className="error-message">
+                <strong>
+                  Dashboard
+                  error
+                </strong>
+
+                <p>
+                  {dashboardError}
+                </p>
+              </div>
+            )}
+
+            <div
+              key={activeTab}
+              id="dashboard-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`tab-${activeTab}`}
+              className="tab-content"
+            >
+              {isLoadingDashboard ? (
+                <div className="loading-state">
+                  Loading home
+                  records...
+                </div>
+              ) : (
+                renderRecordsTab()
+              )}
+            </div>
+          </section>
+        );
+
+      case "history":
+        return (
+          <div className="panel-enter">
+            <TimelinePanel
+              events={timelineEvents}
+              documents={documents}
+              isLoading={isLoadingTimeline}
+              error={timelineError}
+              onRefresh={refreshTimeline}
+            />
+          </div>
+        );
+
+      case "home":
+        return (
+          <section className="dashboard-section panel-enter">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  This property
+                </p>
+                <h3>Home</h3>
+              </div>
+            </div>
+
+            <SubNav
+              label="Home settings"
+              idPrefix="home-tab"
+              panelId="home-tabpanel"
+              activeId={homeSubTab}
+              onSelect={setHomeSubTab}
+              items={HOME_SUBTABS}
+            />
+
+            <div
+              key={homeSubTab}
+              id="home-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`home-tab-${homeSubTab}`}
+              className="tab-content"
+            >
+              {renderHomeSubTab()}
+            </div>
+          </section>
+        );
+
+      case "overview":
+      default:
+        return (
+          <OverviewPanel
+            counts={{
+              issues: issues.length,
+              projects: projects.length,
+              assets: assets.length,
+              memories: memories.length,
+              documents: documents.length,
+            }}
+            needsItems={needsItems}
+            isLoadingNeeds={isLoadingNeeds}
+            needsError={needsError}
+            onSelectNeed={handleSelectNeed}
+            recentEvents={timelineEvents.slice(0, 6)}
+            proposalsTotal={proposals?.total || 0}
+            onNavigate={navigateToSection}
+            proposalsSlot={
+              (proposals?.total || 0) > 0 ? (
+                <ProposalsPanel
+                  proposals={proposals}
+                  isBusy={isUpdatingProposal}
+                  onAccept={acceptProposal}
+                  onReject={rejectProposal}
+                  onAcceptAll={acceptAllProposals}
+                  onReviewDuplicate={reviewDuplicate}
+                  hideHeader
+                />
+              ) : null
             }
           />
         );
@@ -540,10 +827,6 @@ function App() {
 
       <header className="app-topbar">
         <div className="brand-lockup">
-          <p className="topbar-eyebrow">
-            Agentic home memory
-          </p>
-
           <p className="brand-wordmark">
             HouseIQ
           </p>
@@ -590,177 +873,58 @@ function App() {
         </div>
       </header>
 
-      <section className="layout">
-        {/* -------------------------------------- */}
-        {/* HOME SIDEBAR                           */}
-        {/* -------------------------------------- */}
-
-        <aside className="panel sidebar">
-          <h2>Your Homes</h2>
-
-          {homesError && (
-            <div className="error-message">
-              <strong>
-                Could not load homes
-              </strong>
-
-              <p>{homesError}</p>
-            </div>
-          )}
-
-          <form
-            onSubmit={createHome}
-            className="stack"
-          >
-            <input
-              value={homeForm.name}
-              onChange={(event) =>
-                setHomeForm({
-                  ...homeForm,
-                  name: event.target
-                    .value,
-                })
-              }
-              placeholder="Home name, e.g. 1978 Ranch"
-            />
-
-            <input
-              value={
-                homeForm.yearBuilt
-              }
-              onChange={(event) =>
-                setHomeForm({
-                  ...homeForm,
-                  yearBuilt:
-                    event.target
-                      .value,
-                })
-              }
-              placeholder="Year built"
-              type="number"
-            />
-
-            <textarea
-              value={homeForm.notes}
-              onChange={(event) =>
-                setHomeForm({
-                  ...homeForm,
-                  notes: event.target
-                    .value,
-                })
-              }
-              placeholder="General notes about this home"
-            />
-
-            {createHomeError && (
-              <p className="record-inline-error">
-                {createHomeError}
-              </p>
-            )}
-
-            <button type="submit">
-              Create Home
-            </button>
-          </form>
-
-          <div className="home-list">
-            {homes.map((home) => (
-              <button
-                key={home.id}
-                type="button"
-                className={
-                  selectedHome?.id ===
-                    home.id
-                    ? "home-card active"
-                    : "home-card"
+      <div className="workspace">
+        {selectedHome ? (
+          <>
+            {showOnboardingGate ? (
+              <OnboardingGate
+                homeId={selectedHome.id}
+                homeProfile={homeProfile}
+                onProfileSaved={async () => {
+                  await fetchHomeProfile(
+                    selectedHome.id
+                  );
+                  await refreshHomeDashboard(
+                    selectedHome.id
+                  );
+                }}
+                onSkip={() =>
+                  setOnboardingGateDismissed(true)
                 }
-                onClick={() =>
-                  selectHome(home)
-                }
-              >
-                <strong>
-                  {home.name}
-                </strong>
+                askUnlocked={askUnlocked}
+                askLockReason={askLockReason}
+              />
+            ) : null}
 
-                {home.year_built && (
-                  <span>
-                    Built{" "}
-                    {
-                      home.year_built
-                    }
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </aside>
-
-
-        {/* -------------------------------------- */}
-        {/* MAIN CONTENT                           */}
-        {/* -------------------------------------- */}
-
-        <section className="panel main-panel">
-          {selectedHome ? (
-            <>
-              {showOnboardingGate ? (
-                <OnboardingGate
-                  homeId={selectedHome.id}
-                  homeProfile={homeProfile}
-                  onProfileSaved={async () => {
-                    await fetchHomeProfile(
-                      selectedHome.id
-                    );
-                    await refreshHomeDashboard(
-                      selectedHome.id
-                    );
-                  }}
-                  onSkip={() =>
-                    setOnboardingGateDismissed(true)
-                  }
-                  askUnlocked={askUnlocked}
-                  askLockReason={askLockReason}
-                />
-              ) : null}
-
-              <header className="selected-home-header">
-                <div>
-                  <p className="eyebrow">
-                    Current home
+            <header className="workspace-homebar">
+              <div>
+                <h1>{selectedHome.name}</h1>
+                {homeSubtitle(selectedHome, homeProfile) ? (
+                  <p>
+                    {homeSubtitle(
+                      selectedHome,
+                      homeProfile
+                    )}
                   </p>
-
-                  <h1>
-                    {
-                      selectedHome.name
-                    }
-                  </h1>
-
-                  {homeProfile && (
-                    <span
-                      className={`onboarding-badge ${ONBOARDING_STATUS_META[
+                ) : null}
+                {homeProfile ? (
+                  <span
+                    className={`onboarding-badge ${ONBOARDING_STATUS_META[
+                      homeProfile.onboardingStatus
+                    ]?.className ||
+                      "onboarding-not_started"}`}
+                  >
+                    {ONBOARDING_STATUS_META[
+                      homeProfile.onboardingStatus
+                    ]?.label ||
+                      formatLabel(
                         homeProfile.onboardingStatus
-                      ]?.className ||
-                        "onboarding-not_started"
-                        }`}
-                    >
-                      {ONBOARDING_STATUS_META[
-                        homeProfile.onboardingStatus
-                      ]?.label ||
-                        formatLabel(
-                          homeProfile.onboardingStatus
-                        )}
-                    </span>
-                  )}
+                      )}
+                  </span>
+                ) : null}
+              </div>
 
-                  {selectedHome.notes && (
-                    <p>
-                      {
-                        selectedHome.notes
-                      }
-                    </p>
-                  )}
-                </div>
-
+              <div className="workspace-homebar-actions">
                 <button
                   type="button"
                   className="secondary-button"
@@ -768,7 +932,6 @@ function App() {
                     refreshHomeDashboard(
                       selectedHome.id
                     );
-
                     fetchHomeProfile(
                       selectedHome.id
                     );
@@ -783,523 +946,53 @@ function App() {
                     ? "Refreshing..."
                     : "Refresh Home"}
                 </button>
-
-                {isHomeOwner ? (
-                  <button
-                    type="button"
-                    className="secondary-button danger-button"
-                    onClick={async () => {
-                      try {
-                        await deleteHome();
-                      } catch (error) {
-                        console.error(error);
-                      }
-                    }}
-                  >
-                    Delete home
-                  </button>
-                ) : null}
-              </header>
-
-
-              {/* -------------------------------- */}
-              {/* HOUSEIQ CONVERSATION             */}
-              {/* -------------------------------- */}
-
-              {/* Always shown once a home is selected — the
-                  quickest path to the two actions HouseIQ's demo
-                  hinges on: uploading a document and asking a
-                  question. */}
-              <section className="demo-cta-row">
-                <p className="demo-cta-copy">
-                  Upload an inspection report,
-                  then ask what to do before
-                  winter — HouseIQ will use your
-                  profile and documents. Or seed
-                  the Indianapolis Ranch demo home.
-                </p>
-
-                <div className="demo-cta-buttons">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={async () => {
-                      try {
-                        const response =
-                          await api.post(
-                            "/demo/seed-indianapolis-ranch"
-                          );
-                        await fetchHomes();
-                        if (response.data?.home) {
-                          selectHome(
-                            response.data.home
-                          );
-                        }
-                      } catch (error) {
-                        console.error(
-                          "Demo seed failed:",
-                          error
-                        );
-                        window.alert(
-                          error.response?.data
-                            ?.error ||
-                            "Could not seed demo home"
-                        );
-                      }
-                    }}
-                  >
-                    Seed Indianapolis Ranch
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() =>
-                      scrollToSection(
-                        "houseiq-document-upload-section"
-                      )
-                    }
-                  >
-                    Upload a document
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={!askUnlocked}
-                    onClick={() =>
-                      scrollToSection(
-                        "houseiq-agent-textarea",
-                        { focus: true }
-                      )
-                    }
-                  >
-                    Ask HouseIQ
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => {
-                      setActiveTab("profile");
-                      window.setTimeout(() => {
-                        scrollToSection(
-                          "houseiq-passport-panel"
-                        );
-                      }, 80);
-                    }}
-                  >
-                    Home Passport
-                  </button>
-                </div>
-              </section>
-
-              <NeedsBoard
-                items={needsItems}
-                isLoading={isLoadingNeeds}
-                error={needsError}
-                onSelectNeed={handleSelectNeed}
-              />
-
-              {proposals?.total > 0 && (
-                <div className="proposals-banner">
-                  <p>
-                    HouseIQ proposed {proposals.total}{" "}
-                    change
-                    {proposals.total === 1 ? "" : "s"} from
-                    recent analysis. Review before they become
-                    verified home facts.
-                  </p>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() =>
-                      document
-                        .getElementById(
-                          "houseiq-proposals-panel"
-                        )
-                        ?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "center",
-                        })
-                    }
-                  >
-                    Review proposals
-                  </button>
-                </div>
-              )}
-
-              <ProposalsPanel
-                proposals={proposals}
-                isBusy={isUpdatingProposal}
-                onAccept={acceptProposal}
-                onReject={rejectProposal}
-                onAcceptAll={acceptAllProposals}
-              />
-
-              {documentOpenError ? (
-                <p className="error-message" role="alert">
-                  {documentOpenError}
-                </p>
-              ) : null}
-
-              <div
-                key={
-                  selectedHome?.id ||
-                  "no-home"
-                }
-                className="agent-upload-row panel-enter"
-              >
-                <AgentPanel
-                  selectedHome={selectedHome}
-                  askLocked={!askUnlocked}
-                  askLockReason={askLockReason}
-                  onRecordsChanged={() =>
-                    refreshHomeDashboard(
-                      selectedHome.id
-                    )
-                  }
-                  onNavigateTab={setActiveTab}
-                />
-
-                <DocumentUploadPanel
-                  selectedDocumentType={
-                    selectedDocumentType
-                  }
-                  setSelectedDocumentType={
-                    setSelectedDocumentType
-                  }
-                  selectedDocumentFile={
-                    selectedDocumentFile
-                  }
-                  setSelectedDocumentFile={
-                    setSelectedDocumentFile
-                  }
-                  isUploadingDocument={
-                    isUploadingDocument
-                  }
-                  documentUploadError={
-                    documentUploadError
-                  }
-                  setDocumentUploadError={
-                    setDocumentUploadError
-                  }
-                  documentUploadResult={
-                    documentUploadResult
-                  }
-                  setDocumentUploadResult={
-                    setDocumentUploadResult
-                  }
-                  uploadDocument={uploadDocument}
-                  onNavigateTab={setActiveTab}
-                />
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={goToYourHomes}
+                >
+                  Switch home
+                </button>
               </div>
+            </header>
 
+            <PrimaryNav
+              activeSection={activeSection}
+              onSelect={setActiveSection}
+            />
+
+            <div
+              hidden={activeSection !== "ask"}
+              className="ask-page panel-enter"
+            >
+              <AgentPanel
+                key={selectedHome?.id || "no-home"}
+                selectedHome={selectedHome}
+                askLocked={!askUnlocked}
+                askLockReason={askLockReason}
+                agentRuns={agentRuns}
+                onRecordsChanged={() =>
+                  refreshHomeDashboard(
+                    selectedHome.id
+                  )
+                }
+                onNavigateTab={navigateToTab}
+              />
               <AdviceHistoryPanel
                 runs={agentRuns}
                 isLoading={isLoadingAgentRuns}
                 error={agentRunsError}
               />
-
-
-              {/* -------------------------------- */}
-              {/* HOME RECORD DASHBOARD            */}
-              {/* -------------------------------- */}
-
-              <section className="dashboard-section">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">
-                      Long-term
-                      memory
-                    </p>
-
-                    <h3>
-                      Home Record
-                      Dashboard
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="dashboard-summary">
-                  <div>
-                    <strong>
-                      {issues.length}
-                    </strong>
-
-                    <span>Issues</span>
-                  </div>
-
-                  <div>
-                    <strong>
-                      {projects.length}
-                    </strong>
-
-                    <span>Projects</span>
-                  </div>
-
-                  <div>
-                    <strong>
-                      {assets.length}
-                    </strong>
-
-                    <span>Assets</span>
-                  </div>
-
-                  <div>
-                    <strong>
-                      {memories.length}
-                    </strong>
-
-                    <span>Memories</span>
-                  </div>
-
-                  <div>
-                    <strong>
-                      {documents.length}
-                    </strong>
-
-                    <span>Documents</span>
-                  </div>
-                </div>
-
-                <nav
-                  className="tab-list"
-                  role="tablist"
-                  aria-label="Home records"
-                >
-
-                  <button
-                    type="button"
-                    id="tab-profile"
-                    role="tab"
-                    aria-selected={
-                      activeTab === "profile"
-                    }
-                    aria-controls="dashboard-tabpanel"
-                    className={
-                      activeTab === "profile"
-                        ? "tab-button active"
-                        : "tab-button"
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "profile"
-                      )
-                    }
-                  >
-                    Profile
-                  </button>
-
-                  <button
-                    type="button"
-                    id="tab-issues"
-                    role="tab"
-                    aria-selected={
-                      activeTab === "issues"
-                    }
-                    aria-controls="dashboard-tabpanel"
-                    className={
-                      activeTab ===
-                        "issues"
-                        ? "tab-button active"
-                        : "tab-button"
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "issues"
-                      )
-                    }
-                  >
-                    Issues
-                    <span>
-                      {
-                        issues.length
-                      }
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="tab-projects"
-                    role="tab"
-                    aria-selected={
-                      activeTab === "projects"
-                    }
-                    aria-controls="dashboard-tabpanel"
-                    className={
-                      activeTab ===
-                        "projects"
-                        ? "tab-button active"
-                        : "tab-button"
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "projects"
-                      )
-                    }
-                  >
-                    Projects
-                    <span>
-                      {
-                        projects.length
-                      }
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="tab-assets"
-                    role="tab"
-                    aria-selected={
-                      activeTab === "assets"
-                    }
-                    aria-controls="dashboard-tabpanel"
-                    className={
-                      activeTab ===
-                        "assets"
-                        ? "tab-button active"
-                        : "tab-button"
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "assets"
-                      )
-                    }
-                  >
-                    Assets
-                    <span>
-                      {
-                        assets.length
-                      }
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="tab-memories"
-                    role="tab"
-                    aria-selected={
-                      activeTab === "memories"
-                    }
-                    aria-controls="dashboard-tabpanel"
-                    className={
-                      activeTab ===
-                        "memories"
-                        ? "tab-button active"
-                        : "tab-button"
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "memories"
-                      )
-                    }
-                  >
-                    Memories
-                    <span>
-                      {
-                        memories.length
-                      }
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="tab-documents"
-                    role="tab"
-                    aria-selected={
-                      activeTab === "documents"
-                    }
-                    aria-controls="dashboard-tabpanel"
-                    className={
-                      activeTab === "documents"
-                        ? "tab-button active"
-                        : "tab-button"
-                    }
-                    onClick={() =>
-                      setActiveTab("documents")
-                    }
-                  >
-                    Documents
-
-                    <span>
-                      {documents.length}
-                    </span>
-                  </button>
-                </nav>
-
-                {dashboardError && (
-                  <div className="error-message">
-                    <strong>
-                      Dashboard
-                      error
-                    </strong>
-
-                    <p>
-                      {
-                        dashboardError
-                      }
-                    </p>
-                  </div>
-                )}
-
-                <div
-                  key={activeTab}
-                  id="dashboard-tabpanel"
-                  role="tabpanel"
-                  aria-labelledby={`tab-${activeTab}`}
-                  className="tab-content"
-                >
-                  {isLoadingDashboard ? (
-                    <div className="loading-state">
-                      Loading home
-                      records...
-                    </div>
-                  ) : (
-                    renderActiveTab()
-                  )}
-                </div>
-              </section>
-
-
-              {/* -------------------------------- */}
-              {/* MANUAL TESTING PANEL             */}
-              {/* -------------------------------- */}
-
-              {import.meta.env.DEV && (
-                <ManualMemoryPanel
-                  memoryForm={memoryForm}
-                  setMemoryForm={
-                    setMemoryForm
-                  }
-                  createMemory={
-                    createMemory
-                  }
-                  memoryFormError={
-                    memoryFormError
-                  }
-                />
-              )}
-            </>
-          ) : (
-            <div className="empty-state large">
-              <h2>
-                Create your first
-                home
-              </h2>
-
-              <p>
-                Once a home exists,
-                HouseIQ can begin
-                remembering repairs,
-                systems, projects,
-                problems, and
-                maintenance history.
-              </p>
             </div>
-          )}
-        </section>
-      </section>
+
+            {activeSection === "ask"
+              ? null
+              : renderActiveSection()}
+          </>
+        ) : (
+          renderHomesManager()
+        )}
+      </div>
     </main>
   );
 }

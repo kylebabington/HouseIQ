@@ -45,6 +45,12 @@ const USER_A_ASSET_ID =
 const USER_A_MEMORY_ID =
     "66666666-6666-4666-8666-666666666666";
 
+const USER_A_DOCUMENT_ID =
+    "99999999-9999-4999-8999-999999999999";
+
+const USER_A_CHUNK_ID =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
 const USER_A_AGENT_RUN_ID =
     "77777777-7777-4777-8777-777777777777";
 
@@ -204,6 +210,7 @@ vi.mock("../services/ai/index.js", () => {
 let app;
 
 let generateHouseAgentResponse;
+let createEmbedding;
 
 beforeAll(async () => {
     process.env.NODE_ENV =
@@ -230,6 +237,8 @@ beforeAll(async () => {
 
     generateHouseAgentResponse =
         aiModule.generateHouseAgentResponse;
+    createEmbedding =
+        aiModule.createEmbedding;
 });
 
 
@@ -497,6 +506,8 @@ beforeEach(() => {
                     "2026-07-24T10:00:00.000Z",
             },
         ],
+
+        documentChunks: [],
     };
 
 
@@ -819,6 +830,37 @@ beforeEach(() => {
 
 
             // ---------------------------------------------
+            // DOCUMENT CHUNK VECTOR SEARCH
+            // ---------------------------------------------
+
+            if (
+                normalizedSql.includes(
+                    "from document_chunks"
+                ) &&
+                normalizedSql.includes(
+                    "where document_chunks.home_id = $1"
+                ) &&
+                normalizedSql.includes(
+                    "embedding is not null"
+                )
+            ) {
+                const [homeId] = parameters;
+
+                const rows =
+                    testDatabase.documentChunks.filter(
+                        (chunk) =>
+                            chunk.home_id === homeId
+                    );
+
+                return {
+                    rows,
+                    rowCount:
+                        rows.length,
+                };
+            }
+
+
+            // ---------------------------------------------
             // INSERT A NEW MEMORY (created by the agent)
             // ---------------------------------------------
 
@@ -1022,6 +1064,16 @@ describe(
                     calledContext.memories
                 ).toHaveLength(1);
 
+                expect(
+                    Array.isArray(
+                        calledContext.documentChunks
+                    )
+                ).toBe(true);
+
+                expect(
+                    calledContext.documentChunks
+                ).toHaveLength(0);
+
                 // The response should surface a server-computed
                 // contextUsed summary, not something the model made up.
                 expect(
@@ -1054,9 +1106,90 @@ describe(
                     response.body.contextUsed.counts
                 ).toMatchObject({
                     memories: 1,
+                    documentChunks: 0,
                     issues: 1,
                     projects: 1,
                     assets: 1,
+                });
+            }
+        );
+
+
+        test(
+            "Ask retrieves semantically related document_chunks and passes them to the agent",
+            async () => {
+                testDatabase.documentChunks = [
+                    {
+                        id: USER_A_CHUNK_ID,
+                        home_id: USER_A_HOME_ID,
+                        document_id: USER_A_DOCUMENT_ID,
+                        file_name:
+                            "invoice_full_roof_replacement.pdf",
+                        document_type: "invoice",
+                        page_number: 1,
+                        chunk_index: 0,
+                        content:
+                            "Full roof replacement completed June 18, 2021 by Skyline Roofing. Invoice total $18,450.00.",
+                        similarity_distance: 0.56,
+                    },
+                ];
+
+                const response =
+                    await request(app)
+                        .post(
+                            `/api/homes/${USER_A_HOME_ID}/ask`
+                        )
+                        .set(
+                            "x-test-user-id",
+                            USER_A_ID
+                        )
+                        .send({
+                            question:
+                                "When was the roof installed, who did the work, and how much did it cost?",
+                        });
+
+                expect(response.status).toBe(200);
+
+                const [, calledContext] =
+                    generateHouseAgentResponse.mock
+                        .calls[0];
+
+                expect(
+                    calledContext.documentChunks
+                ).toHaveLength(1);
+
+                expect(
+                    calledContext.documentChunks[0]
+                ).toMatchObject({
+                    id: USER_A_CHUNK_ID,
+                    file_name:
+                        "invoice_full_roof_replacement.pdf",
+                    page_number: 1,
+                });
+
+                expect(
+                    calledContext.documentChunks[0].content
+                ).toContain("Skyline Roofing");
+
+                expect(
+                    response.body.contextUsed.documentTitles
+                ).toEqual([
+                    "invoice_full_roof_replacement.pdf",
+                ]);
+
+                expect(
+                    response.body.contextUsed.counts
+                        .documentChunks
+                ).toBe(1);
+
+                expect(
+                    response.body.citations[0]
+                ).toMatchObject({
+                    id: USER_A_CHUNK_ID,
+                    title:
+                        "invoice_full_roof_replacement.pdf",
+                    page: 1,
+                    sourceDocumentId: USER_A_DOCUMENT_ID,
                 });
             }
         );
@@ -1116,13 +1249,13 @@ describe(
                     memoriesToCreate: [
                         {
                             title:
-                                "Water heater installed in 2020",
+                                "Crawlspace encapsulation",
 
                             category:
-                                "plumbing",
+                                "structure",
 
                             content:
-                                "The tankless water heater was installed in 2020.",
+                                "The crawlspace was encapsulated with a vapor barrier in 2018.",
 
                             importance:
                                 4,
@@ -1150,7 +1283,7 @@ describe(
                         )
                         .send({
                             question:
-                                "Remember that my water heater was installed in 2020.",
+                                "Remember that the crawlspace was encapsulated in 2018.",
                         });
 
                 expect(
@@ -1162,7 +1295,7 @@ describe(
                 ).toContainEqual({
                     type: "memory_created",
                     recordId: USER_A_NEW_MEMORY_ID,
-                    title: "Water heater installed in 2020",
+                    title: "Crawlspace encapsulation",
                 });
 
                 expect(
@@ -1175,7 +1308,57 @@ describe(
 
                 expect(
                     response.body.createdRecords.memories[0].title
-                ).toBe("Water heater installed in 2020");
+                ).toBe("Crawlspace encapsulation");
+            }
+        );
+
+        test(
+            "forwards conversation history and embeds follow-ups with the previous turn",
+            async () => {
+                const conversationHistory = [
+                    {
+                        role: "user",
+                        content:
+                            "When was the roof replaced?",
+                    },
+                    {
+                        role: "assistant",
+                        content:
+                            "Cedar Ridge replaced the roof on June 18, 2021 for $14,680.",
+                    },
+                ];
+
+                const response =
+                    await request(app)
+                        .post(
+                            `/api/homes/${USER_A_HOME_ID}/ask`
+                        )
+                        .set(
+                            "x-test-user-id",
+                            USER_A_ID
+                        )
+                        .send({
+                            question:
+                                "How much did that cost?",
+                            conversationHistory,
+                        });
+
+                expect(response.status).toBe(200);
+
+                expect(createEmbedding).toHaveBeenCalled();
+                expect(
+                    createEmbedding.mock.calls[0][0]
+                ).toContain("When was the roof replaced?");
+                expect(
+                    createEmbedding.mock.calls[0][0]
+                ).toContain("How much did that cost?");
+
+                const [, calledContext] =
+                    generateHouseAgentResponse.mock.calls[0];
+
+                expect(
+                    calledContext.conversationHistory
+                ).toEqual(conversationHistory);
             }
         );
     }

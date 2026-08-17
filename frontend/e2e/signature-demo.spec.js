@@ -20,13 +20,18 @@ test.describe("HouseIQ public demo", () => {
     await explore.click();
     await expect(page.locator("h1")).toBeVisible();
     await expect(
-      page.getByRole("heading", {
-        name: /What your house needs/i,
-      })
+      page.getByRole("navigation", { name: "House pages" })
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", {
-        name: /What should I handle before winter/i,
+      page.getByRole("button", { name: /Needs Attention/i })
+    ).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "House pages" })
+      .getByRole("button", { name: "Ask HouseIQ" })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: /Ask HouseIQ — Ask about repairs/i,
       })
     ).toBeVisible();
   });
