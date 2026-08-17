@@ -319,12 +319,6 @@ function AgentPanel({
     submitQuestion(question);
   }
 
-  function startNewChat() {
-    setLiveTurns([]);
-    setQuestion("");
-    setAskError("");
-  }
-
 
   // -----------------------------------------------------
   // HANDLE A CLICK ON AN ACTION CHIP
