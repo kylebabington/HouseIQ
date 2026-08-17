@@ -3,7 +3,7 @@
 import {
     createEmbedding,
     vectorToSql,
-} from "./ai/embeddings.js";
+} from "./ai/index.js";
 
 import { pool } from "../db/pool.js";
 
