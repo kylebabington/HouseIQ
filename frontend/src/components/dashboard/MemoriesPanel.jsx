@@ -12,6 +12,7 @@ import {
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
 
 
 // ---------------------------------------------------------
@@ -266,7 +267,7 @@ function MemoriesPanel({
           </p>
         </div>
       ) : (
-    <div className="record-grid">
+    <div className="record-stack">
       {displayedMemories.map((memory) => {
         const isEditing =
           editingMemoryId === memory.id;
@@ -275,35 +276,20 @@ function MemoriesPanel({
           deletingMemoryId === memory.id;
 
         return (
-          <article
+          <CollapsibleSection
             key={memory.id}
             id={`record-memory-${memory.id}`}
-            className={
-              highlightId === memory.id
-                ? "record-card memory-card record-highlight"
-                : "record-card memory-card"
-            }
+            variant="row"
+            title={memory.title || "Memory"}
+            summary={formatLabel(memory.category)}
+            defaultOpen={highlightId === memory.id}
+            forceOpen={isEditing}
           >
-            <div className="record-card-header">
-              <div>
-                <span className="record-type">
-                  {formatLabel(
-                    memory.category
-                  )}
-                </span>
-
-                {!isEditing && (
-                  <h4>
-                    {memory.title}
-                  </h4>
-                )}
-              </div>
-
+            {memory.importance ? (
               <span className="importance-badge">
-                Importance{" "}
-                {memory.importance}
+                Importance {memory.importance}
               </span>
-            </div>
+            ) : null}
 
             {isEditing ? (
               <div className="record-edit-form">
@@ -383,6 +369,7 @@ function MemoriesPanel({
                   evidencePage={
                     memory.evidence_page
                   }
+                  evidenceSources={memory.evidence}
                   onOpenDocument={onOpenDocument}
                 />
 
@@ -456,7 +443,7 @@ function MemoriesPanel({
                 )}
               </small>
             </div>
-          </article>
+          </CollapsibleSection>
         );
       })}
     </div>

@@ -13,6 +13,7 @@ import {
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
 
 
 // ---------------------------------------------------------
@@ -33,12 +34,30 @@ const PROJECT_STATUSES = [
 ];
 
 
+function projectSummary(project) {
+  const parts = [formatLabel(project.status || "planned")];
+
+  if (
+    Number(project.estimated_cost_low) > 0 ||
+    Number(project.estimated_cost_high) > 0
+  ) {
+    parts.push(
+      `est. ${formatCurrency(project.estimated_cost_low)}–${formatCurrency(project.estimated_cost_high)}`
+    );
+  }
+
+  return parts.join(" · ");
+}
+
 function ProjectsPanel({
   projects,
   homeId,
   onRecordsChanged,
   onOpenDocument,
+  highlightId,
 }) {
+  const [statusFilter, setStatusFilter] =
+    useState("all");
   // Tracks which project or task is currently saving, so its
   // control can disable itself while the request is in flight.
   const [savingKey, setSavingKey] =
@@ -148,32 +167,69 @@ function ProjectsPanel({
     );
   }
 
+  const visibleProjects = projects.filter((project) => {
+    const status = project.status || "planned";
+
+    if (statusFilter === "planned") {
+      return status === "planned";
+    }
+
+    if (statusFilter === "active") {
+      return status === "in_progress";
+    }
+
+    if (statusFilter === "complete") {
+      return status === "completed";
+    }
+
+    return true;
+  });
+
   return (
-    <div className="record-grid">
-      {projects.map((project) => (
-        <article
+    <div className="projects-panel-wrap">
+      <div
+        className="tab-list"
+        role="tablist"
+        aria-label="Project status"
+      >
+        {[
+          ["planned", "Planned"],
+          ["active", "Active"],
+          ["complete", "Complete"],
+          ["all", "All"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={statusFilter === id}
+            className={
+              statusFilter === id
+                ? "tab-button active"
+                : "tab-button"
+            }
+            onClick={() => setStatusFilter(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {visibleProjects.length === 0 ? (
+        <div className="empty-state dashboard-empty">
+          <h4>No {statusFilter} projects</h4>
+        </div>
+      ) : (
+    <div className="record-stack">
+      {visibleProjects.map((project) => (
+        <CollapsibleSection
           key={project.id}
-          className="record-card project-card"
+          id={`record-project-${project.id}`}
+          variant="row"
+          title={project.title}
+          summary={projectSummary(project)}
+          defaultOpen={highlightId === project.id}
         >
-          <div className="record-card-header">
-            <div>
-              <span className="record-type">
-                Project
-              </span>
-
-              <h4>
-                {project.title}
-              </h4>
-            </div>
-
-            <span
-              className={`priority-badge priority-${project.priority}`}
-            >
-              {formatLabel(
-                project.priority
-              )}
-            </span>
-          </div>
 
           <ProvenanceLine
             sourceFileName={
@@ -191,6 +247,7 @@ function ProjectsPanel({
             evidencePage={
               project.evidence_page
             }
+            evidenceSources={project.evidence}
             onOpenDocument={onOpenDocument}
           />
 
@@ -345,8 +402,10 @@ function ProjectsPanel({
               }
             </p>
           )}
-        </article>
+        </CollapsibleSection>
       ))}
+    </div>
+      )}
     </div>
   );
 }

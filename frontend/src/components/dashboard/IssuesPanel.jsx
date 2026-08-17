@@ -12,6 +12,7 @@ import {
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
 
 
 // ---------------------------------------------------------
@@ -44,6 +45,9 @@ function IssuesPanel({
 
   const [issueErrors, setIssueErrors] =
     useState({});
+
+  const [statusFilter, setStatusFilter] =
+    useState("all");
 
   const [createForm, setCreateForm] = useState({
     title: "",
@@ -140,6 +144,20 @@ function IssuesPanel({
     }
   }
 
+  const visibleIssues = issues.filter((issue) => {
+    const status = issue.status || "open";
+
+    if (statusFilter === "active") {
+      return status === "open" || status === "in_progress";
+    }
+
+    if (statusFilter === "resolved") {
+      return status === "resolved" || status === "closed";
+    }
+
+    return true;
+  });
+
   return (
     <div className="issues-panel-wrap">
       <form
@@ -201,36 +219,49 @@ function IssuesPanel({
           </p>
         </div>
       ) : (
-    <div className="record-grid">
-      {issues.map((issue) => (
-        <article
+        <>
+          <div
+            className="tab-list"
+            role="tablist"
+            aria-label="Issue status"
+          >
+            {[
+              ["active", "Active"],
+              ["resolved", "Resolved"],
+              ["all", "All"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === id}
+                className={
+                  statusFilter === id
+                    ? "tab-button active"
+                    : "tab-button"
+                }
+                onClick={() => setStatusFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {visibleIssues.length === 0 ? (
+            <div className="empty-state dashboard-empty">
+              <h4>No {statusFilter} issues</h4>
+            </div>
+          ) : (
+    <div className="record-stack">
+      {visibleIssues.map((issue) => (
+        <CollapsibleSection
           key={issue.id}
           id={`record-issue-${issue.id}`}
-          className={
-            highlightId === issue.id
-              ? "record-card issue-card record-highlight"
-              : "record-card issue-card"
-          }
+          variant="row"
+          title={issue.title}
+          summary={`${formatLabel(issue.priority)} priority · ${formatLabel(issue.status || "open")}`}
+          defaultOpen={highlightId === issue.id}
         >
-          <div className="record-card-header">
-            <div>
-              <span className="record-type">
-                {formatLabel(
-                  issue.category
-                )}
-              </span>
-
-              <h4>{issue.title}</h4>
-            </div>
-
-            <span
-              className={`priority-badge priority-${issue.priority}`}
-            >
-              {formatLabel(
-                issue.priority
-              )}
-            </span>
-          </div>
 
           <ProvenanceLine
             sourceFileName={
@@ -248,6 +279,7 @@ function IssuesPanel({
             evidencePage={
               issue.evidence_page
             }
+            evidenceSources={issue.evidence}
             onOpenDocument={onOpenDocument}
           />
 
@@ -326,9 +358,11 @@ function IssuesPanel({
               {issueErrors[issue.id]}
             </p>
           )}
-        </article>
+        </CollapsibleSection>
       ))}
     </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -137,9 +137,15 @@ function useHomeDashboard({
   // DASHBOARD UI STATE
   // -----------------------------------------------------
 
-  // Controls which dashboard tab is visible.
+  const [activeSection, setActiveSection] =
+    useState("overview");
+
+  // Controls which Records subsection is visible.
   const [activeTab, setActiveTab] =
     useState("issues");
+
+  const [homeSubTab, setHomeSubTab] =
+    useState("profile");
 
   // True while dashboard data is loading.
   const [
@@ -215,6 +221,7 @@ function useHomeDashboard({
     issues: [],
     projects: [],
     assets: [],
+    duplicateFlags: [],
     total: 0,
   });
   const [isUpdatingProposal, setIsUpdatingProposal] =
@@ -339,8 +346,10 @@ function useHomeDashboard({
     setHighlightRecord(null);
     setMemoryFormError("");
 
-    // Start each home on its profile / gate.
-    setActiveTab("profile");
+    // Start each home on Overview; Records defaults to Issues.
+    setActiveSection("overview");
+    setActiveTab("issues");
+    setHomeSubTab("profile");
   }
 
 
@@ -512,6 +521,7 @@ function useHomeDashboard({
             issues: [],
             projects: [],
             assets: [],
+            duplicateFlags: [],
             total: 0,
           }
         );
@@ -835,7 +845,7 @@ function useHomeDashboard({
       );
 
       // Show the user the new document immediately.
-      setActiveTab("documents");
+      setActiveSection("documents");
     } catch (error) {
       console.error(
         "Document upload failed:",
@@ -922,6 +932,21 @@ function useHomeDashboard({
 
     await api.delete(
       `${API_URL}/documents/${documentRecord.id}`
+    );
+
+    if (selectedHome?.id) {
+      await refreshHomeDashboard(selectedHome.id);
+    }
+  }
+
+  async function renameDocument(documentRecord, displayTitle) {
+    if (!documentRecord?.id) {
+      return;
+    }
+
+    await api.patch(
+      `${API_URL}/documents/${documentRecord.id}`,
+      { displayTitle }
     );
 
     if (selectedHome?.id) {
@@ -1056,6 +1081,7 @@ function useHomeDashboard({
         selectedHome.id
       );
 
+      setActiveSection("records");
       setActiveTab("memories");
     } catch (error) {
       console.error(
@@ -1160,6 +1186,42 @@ function useHomeDashboard({
     }
   }
 
+  async function reconcileRecords() {
+    if (!selectedHome?.id) {
+      return;
+    }
+
+    try {
+      setIsUpdatingProposal(true);
+      await api.post(
+        `${API_URL}/homes/${selectedHome.id}/records/reconcile`
+      );
+      await refreshHomeDashboard(selectedHome.id);
+    } catch (error) {
+      console.error("Record reconcile failed:", error);
+    } finally {
+      setIsUpdatingProposal(false);
+    }
+  }
+
+  async function reviewDuplicate(flagId, decision) {
+    if (!selectedHome?.id || !flagId) {
+      return;
+    }
+
+    try {
+      setIsUpdatingProposal(true);
+      await api.post(
+        `${API_URL}/homes/${selectedHome.id}/duplicate-flags/${flagId}/${decision}`
+      );
+      await refreshHomeDashboard(selectedHome.id);
+    } catch (error) {
+      console.error("Duplicate review failed:", error);
+    } finally {
+      setIsUpdatingProposal(false);
+    }
+  }
+
 
   // -----------------------------------------------------
   // PUBLIC API
@@ -1194,8 +1256,12 @@ function useHomeDashboard({
     saveHomeProfile,
 
     // Dashboard UI
+    activeSection,
+    setActiveSection,
     activeTab,
     setActiveTab,
+    homeSubTab,
+    setHomeSubTab,
     isLoadingDashboard,
     dashboardError,
     refreshHomeDashboard,
@@ -1245,6 +1311,7 @@ function useHomeDashboard({
     openOriginalDocument,
     openDocumentById,
     deleteDocument,
+    renameDocument,
 
     // Manual memory testing
     memoryForm,
@@ -1258,6 +1325,8 @@ function useHomeDashboard({
     acceptProposal,
     rejectProposal,
     acceptAllProposals,
+    reconcileRecords,
+    reviewDuplicate,
   };
 }
 

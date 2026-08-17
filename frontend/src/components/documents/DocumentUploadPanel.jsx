@@ -25,12 +25,14 @@ function DocumentUploadPanel({
   documentUploadResult,
   setDocumentUploadResult,
   uploadDocument,
+  hideHeading = false,
 }) {
   return (
     <section
       id="houseiq-document-upload-section"
       className="document-upload-section"
     >
+      {hideHeading ? null : (
       <div className="section-heading">
         <div>
           <p className="eyebrow">
@@ -53,6 +55,7 @@ function DocumentUploadPanel({
           PDF, TXT, or photo
         </span>
       </div>
+      )}
 
       <form
         onSubmit={uploadDocument}

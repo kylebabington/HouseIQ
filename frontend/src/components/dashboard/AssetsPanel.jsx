@@ -9,9 +9,29 @@ import api from "../../api.js";
 import {
   formatDate,
   formatLabel,
+  formatYear,
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
+
+function assetSummary(asset) {
+  const parts = [];
+
+  if (asset.brand) {
+    parts.push(asset.brand);
+  }
+
+  const year = formatYear(
+    asset.install_date || asset.purchase_date
+  );
+
+  if (year) {
+    parts.push(`installed ${year}`);
+  }
+
+  return parts.join(" · ") || formatLabel(asset.asset_type);
+}
 
 function assetAttentionLine(asset) {
   const type = String(
@@ -216,34 +236,21 @@ function AssetsPanel({
   }
 
   return (
-    <div className="record-grid">
+    <div className="record-stack">
       {assets.map((asset) => {
         const isEditing =
           editingAssetId === asset.id;
 
         return (
-          <article
+          <CollapsibleSection
             key={asset.id}
-            className={
-              highlightId === asset.id
-                ? "record-card asset-card record-highlight"
-                : "record-card asset-card"
-            }
             id={`record-asset-${asset.id}`}
+            variant="row"
+            title={asset.name || formatLabel(asset.asset_type)}
+            summary={assetSummary(asset)}
+            defaultOpen={highlightId === asset.id}
+            forceOpen={isEditing}
           >
-            <div className="record-card-header">
-              <div>
-                <span className="record-type">
-                  {formatLabel(
-                    asset.asset_type
-                  )}
-                </span>
-
-                {!isEditing && (
-                  <h4>{asset.name}</h4>
-                )}
-              </div>
-            </div>
 
             <ProvenanceLine
               sourceFileName={
@@ -261,6 +268,7 @@ function AssetsPanel({
               evidencePage={
                 asset.evidence_page
               }
+              evidenceSources={asset.evidence}
               onOpenDocument={onOpenDocument}
             />
 
@@ -505,10 +513,10 @@ function AssetsPanel({
             )}
 
             {assetErrors[asset.id] && (
-              <p className="record-inline-error">
-                {assetErrors[asset.id]}
-              </p>
-            )}
+            <p className="record-inline-error">
+              {assetErrors[asset.id]}
+            </p>
+          )}
 
             <div className="record-footer">
               <small>
@@ -518,7 +526,7 @@ function AssetsPanel({
                 )}
               </small>
             </div>
-          </article>
+          </CollapsibleSection>
         );
       })}
     </div>
