@@ -179,7 +179,10 @@ function buildTimeline({
     for (const document of documents) {
         events.push({
             id: document.id,
-            title: document.file_name || "Home document",
+            title:
+                document.display_title ||
+                document.file_name ||
+                "Home document",
             kind: document.document_type || "document",
             occurred_at:
                 document.document_date || document.created_at,
@@ -501,6 +504,7 @@ async function loadPublicDemoHome(homeId) {
                 document_type,
                 file_name,
                 summary,
+                metadata->>'displayTitle' AS display_title,
                 metadata->>'documentDate' AS document_date,
                 metadata->>'contractorOrCompany'
                     AS contractor_or_company,
