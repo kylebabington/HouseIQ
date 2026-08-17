@@ -108,6 +108,44 @@ ${memory.created_at}
 }
 
 /**
+ * Turns retrieved document_chunks into readable evidence blocks.
+ */
+function formatDocumentChunkContext(documentChunks) {
+    if (!documentChunks || documentChunks.length === 0) {
+        return "No relevant uploaded document excerpts were found for this question.";
+    }
+
+    return documentChunks
+        .map((chunk, index) => {
+            const source =
+                chunk.file_name ||
+                chunk.document_type ||
+                "Uploaded document";
+            const page =
+                chunk.page_number
+                    ? String(chunk.page_number)
+                    : "unknown";
+
+            return `
+DOCUMENT EXCERPT ${index + 1}
+
+SOURCE:
+${source}
+
+TYPE:
+${chunk.document_type || "unknown"}
+
+PAGE:
+${page}
+
+EXCERPT:
+${chunk.content || ""}
+`;
+        })
+        .join("\n");
+}
+
+/**
  * Turns open home_issues rows into readable context blocks.
  */
 function formatIssueContext(issues) {
@@ -260,6 +298,7 @@ ${asset.location || "unknown"}
  * - home: { id, name, year_built, notes }
  * - profile: camelCase home profile object (see lib/homeProfile.js)
  * - memories: relevant long-term memory rows
+ * - documentChunks: semantically retrieved document excerpts
  * - issues: open home_issues rows
  * - projects: active home_projects rows
  * - assets: home_assets rows
@@ -286,6 +325,7 @@ export async function generateHouseAgentResponse(
         profile = null,
         localSeasonLine = null,
         memories = [],
+        documentChunks = [],
         issues = [],
         projects = [],
         assets = [],
@@ -302,6 +342,8 @@ export async function generateHouseAgentResponse(
         localSeasonLine ||
         "No local season context is available yet.";
     const memoryContext = formatMemoryContext(memories);
+    const documentChunkContext =
+        formatDocumentChunkContext(documentChunks);
     const issueContext = formatIssueContext(issues);
     const projectContext = formatProjectContext(projects);
     const assetContext = formatAssetContext(assets);
@@ -622,10 +664,14 @@ GENERAL RULES
 
 - Use remembered home information when it is relevant.
 - Never claim that a detail is known unless it appears in the user's current
-  message OR in the provided home details, home profile, memories, open
-  issues, active projects, or assets.
-- Prefer citing known physical facts (from the home profile) and open work
-  (issues, projects, assets) when they are relevant to the question.
+  message, the recent conversation, OR in the provided home details, home
+  profile, memories, uploaded document excerpts, open issues, active projects,
+  or assets.
+- Prefer citing known physical facts (from the home profile), uploaded document
+  excerpts, and open work (issues, projects, assets) when they are relevant.
+- When an uploaded document excerpt contains a date, contractor, price, brand,
+  model, or installation detail, use that exact information and mention the
+  source document. Do not round, invent, or substitute a different figure.
 - Prefer linking to or referencing an existing issue, project, or asset
   instead of creating a duplicate record for the same underlying thing.
 - Do not create records for casual questions that contain no new home information.
@@ -641,6 +687,23 @@ GENERAL RULES
 - Keep clarifying questions focused and useful.
 - Usually ask no more than five clarifying questions.
 - Do not create empty or meaningless records.
+
+CONVERSATION RULES
+
+This is an ongoing conversation, not a series of unrelated questions.
+- Read RECENT CONVERSATION before answering CURRENT HOMEOWNER MESSAGE.
+- Resolve follow-ups and pronouns ("that", "it", "the cost", "why",
+  "what about that") using the recent turns.
+- If the current message is asking for clarification of your previous
+  answer, answer that clarification directly. Do not restart the topic
+  as if the homeowner asked a brand-new question.
+- Use recent conversation to know what they are talking about. Still
+  verify dates, prices, contractors, brands, and other facts against
+  the home profile, memories, uploaded document excerpts, issues,
+  projects, and assets. Do not invent a figure that only appeared in
+  a truncated prior answer if the source excerpts do not support it.
+- Do not create duplicate records for a short follow-up that adds no
+  new home fact.
 
 MEMORY RULES
 
@@ -726,6 +789,11 @@ RELEVANT HOME MEMORY
 ${memoryContext}
 
 
+RELEVANT UPLOADED DOCUMENT EXCERPTS
+
+${documentChunkContext}
+
+
 OPEN ISSUES
 
 ${issueContext}
@@ -751,7 +819,9 @@ CURRENT HOMEOWNER MESSAGE
 ${question.trim()}
 
 
-Analyze the homeowner's message.
+Analyze the homeowner's message as part of this conversation.
+If RECENT CONVERSATION is not empty, treat the current message as a
+follow-up when it refers to something already discussed.
 
 Return:
 - the homeowner-facing answer

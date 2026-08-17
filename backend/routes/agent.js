@@ -34,7 +34,6 @@ import {
     MAX_ISSUES_PER_RUN,
     MAX_MEMORIES_PER_RUN,
     MAX_PROJECTS_PER_RUN,
-    normalizeAssetKey,
     prepareMemoryEmbedding,
 } from "../services/recordHelpers.js";
 
@@ -46,45 +45,24 @@ import {
     formatLocalSeasonLine,
 } from "../lib/climateZones.js";
 
+import {
+    formatDocumentChunkCitation,
+    searchRelevantDocumentChunks,
+} from "../services/documentChunks.js";
+
+import {
+    resolveOrCreateRecord,
+} from "../services/entityResolution.js";
+
+import {
+    buildRetrievalQuery,
+    sanitizeConversationHistory,
+} from "../lib/conversationHistory.js";
+
 // Profile fields that are internal bookkeeping rather than
 // physical facts about the home, excluded from contextUsed.
 const NON_FACT_PROFILE_FIELD_PATTERN =
     /^(homeId|metadata|onboarding|profileCreatedAt|profileUpdatedAt)/i;
-
-// The frontend may send a handful of recent turns so HouseIQ has
-// light conversational context. This caps how many are trusted
-// regardless of what the client sends.
-const MAX_CONVERSATION_HISTORY_ITEMS = 3;
-
-/**
- * Validates and normalizes the optional conversationHistory body
- * field into a small array of { role, content } strings.
- *
- * Anything malformed is dropped rather than rejected outright —
- * conversation history is a nice-to-have, not a correctness
- * requirement for the agent to function.
- */
-function sanitizeConversationHistory(rawHistory) {
-    if (!Array.isArray(rawHistory)) {
-        return [];
-    }
-
-    return rawHistory
-        .filter(
-            (item) =>
-                item &&
-                typeof item === "object" &&
-                (item.role === "user" ||
-                    item.role === "assistant") &&
-                typeof item.content === "string" &&
-                item.content.trim().length > 0
-        )
-        .slice(0, MAX_CONVERSATION_HISTORY_ITEMS * 2)
-        .map((item) => ({
-            role: item.role,
-            content: item.content.trim().slice(0, 400),
-        }));
-}
 
 export function createAgentRouter() {
     const router = Router();
@@ -167,6 +145,7 @@ export function createAgentRouter() {
             let client;
             let agentResponse = null;
             let relevantMemories = [];
+            let relevantChunks = [];
 
             try {
                 // -------------------------------------------------
@@ -196,11 +175,20 @@ export function createAgentRouter() {
 
 
                 // -------------------------------------------------
-                // 2. CREATE AN EMBEDDING FOR THE USER'S MESSAGE
+                // 2. CREATE AN EMBEDDING FOR RETRIEVAL
                 // -------------------------------------------------
+                //
+                // Follow-ups like "how much did that cost?" are
+                // embedded with the previous turn so search still
+                // finds the documents that answer referred to.
+
+                const retrievalQuery = buildRetrievalQuery(
+                    question.trim(),
+                    sanitizedConversationHistory
+                );
 
                 const questionEmbedding =
-                    await createEmbedding(question.trim());
+                    await createEmbedding(retrievalQuery);
 
                 const questionVectorSql =
                     vectorToSql(questionEmbedding);
@@ -222,6 +210,7 @@ export function createAgentRouter() {
                     projectsResult,
                     assetsResult,
                     memoriesResult,
+                    chunksResult,
                 ] = await Promise.all([
                     pool.query(
                         `
@@ -240,6 +229,7 @@ export function createAgentRouter() {
                     WHERE home_id = $1
                       AND status NOT IN ('resolved', 'closed')
                       AND COALESCE(verification_status, 'accepted') = 'accepted'
+                      AND merged_into_id IS NULL
                     ORDER BY updated_at DESC
                     LIMIT 5
                     `,
@@ -253,6 +243,7 @@ export function createAgentRouter() {
                     WHERE home_id = $1
                       AND status NOT IN ('completed', 'cancelled')
                       AND COALESCE(verification_status, 'accepted') = 'accepted'
+                      AND merged_into_id IS NULL
                     ORDER BY updated_at DESC
                     LIMIT 3
                     `,
@@ -265,6 +256,7 @@ export function createAgentRouter() {
                     FROM home_assets
                     WHERE home_id = $1
                       AND COALESCE(verification_status, 'accepted') = 'accepted'
+                      AND merged_into_id IS NULL
                     ORDER BY updated_at DESC
                     LIMIT 8
                     `,
@@ -290,6 +282,7 @@ export function createAgentRouter() {
                     WHERE home_id = $1
                       AND embedding IS NOT NULL
                       AND COALESCE(verification_status, 'accepted') = 'accepted'
+                      AND merged_into_id IS NULL
                     ORDER BY
                         embedding <=> $2::VECTOR(1536)
                     LIMIT 8
@@ -299,6 +292,11 @@ export function createAgentRouter() {
                             questionVectorSql,
                         ]
                     ),
+
+                    searchRelevantDocumentChunks({
+                        homeId,
+                        questionVectorSql,
+                    }),
                 ]);
 
                 // Drop weak matches so Ask is allowed to use zero memories.
@@ -325,6 +323,8 @@ export function createAgentRouter() {
                         );
                     }
                 );
+
+                relevantChunks = chunksResult;
 
                 const issues = issuesResult.rows;
                 const projects = projectsResult.rows;
@@ -369,6 +369,7 @@ export function createAgentRouter() {
                             profile,
                             localSeasonLine,
                             memories: relevantMemories,
+                            documentChunks: relevantChunks,
                             issues,
                             projects,
                             assets,
@@ -401,38 +402,8 @@ export function createAgentRouter() {
                     agentResponse.assetsToCreate || []
                 ).slice(0, MAX_ASSETS_PER_RUN);
 
-                const existingAssetKeys = new Set(
-                    (assets || []).map((row) =>
-                        normalizeAssetKey(
-                            row.asset_type,
-                            row.name
-                        )
-                    )
-                );
-
-                assetsToCreate =
-                    assetsToCreate.filter(
-                        (assetInput) => {
-                            const key =
-                                normalizeAssetKey(
-                                    assetInput.assetType,
-                                    assetInput.name
-                                );
-
-                            if (
-                                existingAssetKeys.has(
-                                    key
-                                )
-                            ) {
-                                return false;
-                            }
-
-                            existingAssetKeys.add(
-                                key
-                            );
-                            return true;
-                        }
-                    );
+                const askEvidenceChunk =
+                    relevantChunks[0] || null;
 
                 const memoryEmbeddings =
                     await Promise.all(
@@ -487,6 +458,14 @@ export function createAgentRouter() {
                     issues: [],
                     projects: [],
                     assets: [],
+                    linked: [],
+                };
+
+                const catalog = {
+                    memories: [...relevantMemories],
+                    issues: [...issues],
+                    projects: [...projects],
+                    assets: [...assets],
                 };
 
 
@@ -506,48 +485,73 @@ export function createAgentRouter() {
                     const memoryInput =
                         memoriesToCreate[memoryIndex];
 
-                    const createdMemory =
-                        await createMemoryRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "memory",
+                            input: memoryInput,
+                            existing: catalog.memories,
                             homeId,
-
-                            title:
-                                memoryInput.title,
-
-                            category:
-                                memoryInput.category,
-
-                            content:
-                                memoryInput.content,
-
-                            importance:
-                                memoryInput.importance,
-
-                            metadata: {
-                                source: "houseiq_agent",
-                                originalQuestion:
-                                    question.trim(),
-                            },
-
-                            embeddingSql:
-                                memoryEmbeddings[
-                                    memoryIndex
-                                ],
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId:
+                                askEvidenceChunk?.document_id ||
+                                null,
+                            fileName:
+                                askEvidenceChunk?.file_name ||
+                                null,
+                            evidencePassage:
+                                askEvidenceChunk?.content ||
+                                null,
+                            evidencePage:
+                                askEvidenceChunk?.page_number ||
+                                null,
+                            chunkId:
+                                askEvidenceChunk?.id ||
+                                null,
                             client,
+                            create: () =>
+                                createMemoryRecord({
+                                    homeId,
+                                    title: memoryInput.title,
+                                    category:
+                                        memoryInput.category,
+                                    content:
+                                        memoryInput.content,
+                                    importance:
+                                        memoryInput.importance,
+                                    metadata: {
+                                        source:
+                                            "houseiq_agent",
+                                        originalQuestion:
+                                            question.trim(),
+                                    },
+                                    embeddingSql:
+                                        memoryEmbeddings[
+                                            memoryIndex
+                                        ],
+                                    verificationStatus:
+                                        "proposed",
+                                    client,
+                                }),
                         });
 
-                    createdRecords.memories.push(
-                        createdMemory
-                    );
-
-                    actionsTaken.push({
-                        type: "memory_created",
-                        recordId: createdMemory.id,
-                        title: createdMemory.title,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "memory_linked",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.memories.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "memory_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    }
                 }
 
 
@@ -559,43 +563,67 @@ export function createAgentRouter() {
                     const issueInput of
                     issuesToCreate
                 ) {
-                    const createdIssue =
-                        await createIssueRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "issue",
+                            input: issueInput,
+                            existing: catalog.issues,
                             homeId,
-
-                            title:
-                                issueInput.title,
-
-                            description:
-                                issueInput.description,
-
-                            priority:
-                                issueInput.priority,
-
-                            category:
-                                issueInput.category,
-
-                            suspectedCause:
-                                issueInput.suspectedCause,
-
-                            recommendedNextStep:
-                                issueInput.recommendedNextStep,
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId:
+                                askEvidenceChunk?.document_id ||
+                                null,
+                            fileName:
+                                askEvidenceChunk?.file_name ||
+                                null,
+                            evidencePassage:
+                                askEvidenceChunk?.content ||
+                                null,
+                            evidencePage:
+                                askEvidenceChunk?.page_number ||
+                                null,
+                            chunkId:
+                                askEvidenceChunk?.id ||
+                                null,
                             client,
+                            create: () =>
+                                createIssueRecord({
+                                    homeId,
+                                    title: issueInput.title,
+                                    description:
+                                        issueInput.description,
+                                    priority:
+                                        issueInput.priority,
+                                    category:
+                                        issueInput.category,
+                                    suspectedCause:
+                                        issueInput.suspectedCause,
+                                    recommendedNextStep:
+                                        issueInput.recommendedNextStep,
+                                    verificationStatus:
+                                        "proposed",
+                                    client,
+                                }),
                         });
 
-                    createdRecords.issues.push(
-                        createdIssue
-                    );
-
-                    actionsTaken.push({
-                        type: "issue_created",
-                        recordId: createdIssue.id,
-                        title: createdIssue.title,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "issue_linked",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.issues.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "issue_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    }
                 }
 
 
@@ -607,51 +635,73 @@ export function createAgentRouter() {
                     const projectInput of
                     projectsToCreate
                 ) {
-                    const createdProject =
-                        await createProjectRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "project",
+                            input: projectInput,
+                            existing: catalog.projects,
                             homeId,
-
-                            title:
-                                projectInput.title,
-
-                            description:
-                                projectInput.description,
-
-                            priority:
-                                projectInput.priority,
-
-                            estimatedCostLow:
-                                projectInput.estimatedCostLow,
-
-                            estimatedCostHigh:
-                                projectInput.estimatedCostHigh,
-
-                            diyDifficulty:
-                                projectInput.diyDifficulty,
-
-                            safetyNotes:
-                                projectInput.safetyNotes,
-
-                            tasks:
-                                projectInput.tasks,
-
-                            verificationStatus:
-                                "proposed",
-
+                            documentId:
+                                askEvidenceChunk?.document_id ||
+                                null,
+                            fileName:
+                                askEvidenceChunk?.file_name ||
+                                null,
+                            evidencePassage:
+                                askEvidenceChunk?.content ||
+                                null,
+                            evidencePage:
+                                askEvidenceChunk?.page_number ||
+                                null,
+                            chunkId:
+                                askEvidenceChunk?.id ||
+                                null,
                             client,
+                            create: () =>
+                                createProjectRecord({
+                                    homeId,
+                                    title: projectInput.title,
+                                    description:
+                                        projectInput.description,
+                                    priority:
+                                        projectInput.priority,
+                                    estimatedCostLow:
+                                        projectInput.estimatedCostLow,
+                                    estimatedCostHigh:
+                                        projectInput.estimatedCostHigh,
+                                    diyDifficulty:
+                                        projectInput.diyDifficulty,
+                                    safetyNotes:
+                                        projectInput.safetyNotes,
+                                    tasks: projectInput.tasks,
+                                    verificationStatus:
+                                        "proposed",
+                                    client,
+                                }),
                         });
 
-                    createdRecords.projects.push(
-                        createdProject
-                    );
-
-                    actionsTaken.push({
-                        type: "project_created",
-                        recordId: createdProject.id,
-                        title: createdProject.title,
-                        taskCount:
-                            createdProject.tasks.length,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "project_linked",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.projects.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "project_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.title,
+                            taskCount:
+                                resolved.record.tasks
+                                    ?.length || 0,
+                        });
+                    }
                 }
 
 
@@ -663,58 +713,77 @@ export function createAgentRouter() {
                     const assetInput of
                     assetsToCreate
                 ) {
-                    const createdAsset =
-                        await createAssetRecord({
+                    const resolved =
+                        await resolveOrCreateRecord({
+                            kind: "asset",
+                            input: assetInput,
+                            existing: catalog.assets,
                             homeId,
-
-                            assetType:
-                                assetInput.assetType,
-
-                            name:
-                                assetInput.name,
-
-                            brand:
-                                assetInput.brand,
-
-                            model:
-                                assetInput.model,
-
-                            serialNumber:
-                                assetInput.serialNumber,
-
-                            location:
-                                assetInput.location,
-
-                            notes:
-                                assetInput.notes,
-
-                            installDate:
-                                assetInput.installDate ||
+                            documentId:
+                                askEvidenceChunk?.document_id ||
                                 null,
-
-                            purchaseDate:
-                                assetInput.purchaseDate ||
+                            fileName:
+                                askEvidenceChunk?.file_name ||
                                 null,
-
-                            warrantyExpiration:
-                                assetInput.warrantyExpiration ||
+                            evidencePassage:
+                                askEvidenceChunk?.content ||
                                 null,
-
-                            verificationStatus:
-                                "proposed",
-
+                            evidencePage:
+                                askEvidenceChunk?.page_number ||
+                                null,
+                            chunkId:
+                                askEvidenceChunk?.id ||
+                                null,
                             client,
+                            create: () =>
+                                createAssetRecord({
+                                    homeId,
+                                    assetType:
+                                        assetInput.assetType,
+                                    name: assetInput.name,
+                                    brand: assetInput.brand,
+                                    model: assetInput.model,
+                                    serialNumber:
+                                        assetInput.serialNumber,
+                                    location:
+                                        assetInput.location,
+                                    notes: assetInput.notes,
+                                    installDate:
+                                        assetInput.installDate ||
+                                        null,
+                                    purchaseDate:
+                                        assetInput.purchaseDate ||
+                                        null,
+                                    warrantyExpiration:
+                                        assetInput.warrantyExpiration ||
+                                        null,
+                                    verificationStatus:
+                                        "proposed",
+                                    client,
+                                }),
                         });
 
-                    createdRecords.assets.push(
-                        createdAsset
-                    );
-
-                    actionsTaken.push({
-                        type: "asset_created",
-                        recordId: createdAsset.id,
-                        title: createdAsset.name,
-                    });
+                    if (resolved.action === "linked") {
+                        createdRecords.linked.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "asset_linked",
+                            recordId: resolved.record.id,
+                            title:
+                                resolved.record.name ||
+                                resolved.record.title,
+                        });
+                    } else {
+                        createdRecords.assets.push(
+                            resolved.record
+                        );
+                        actionsTaken.push({
+                            type: "asset_created",
+                            recordId: resolved.record.id,
+                            title: resolved.record.name,
+                        });
+                    }
                 }
 
 
@@ -812,6 +881,20 @@ export function createAgentRouter() {
                         .map((memory) => memory.title)
                         .slice(0, 8),
 
+                    documentTitles: relevantChunks
+                        .map(
+                            (chunk) =>
+                                chunk.file_name ||
+                                chunk.document_type ||
+                                "Uploaded document"
+                        )
+                        .filter(
+                            (title, index, titles) =>
+                                titles.indexOf(title) ===
+                                index
+                        )
+                        .slice(0, 8),
+
                     issueTitles: issues.map(
                         (issue) => issue.title
                     ),
@@ -826,6 +909,7 @@ export function createAgentRouter() {
 
                     counts: {
                         memories: relevantMemories.length,
+                        documentChunks: relevantChunks.length,
                         issues: issues.length,
                         projects: projects.length,
                         assets: assets.length,
@@ -838,7 +922,7 @@ export function createAgentRouter() {
                 // 12. RETURN EVERYTHING THE FRONTEND NEEDS
                 // -------------------------------------------------
 
-                const citations = [
+                const recordCitations = [
                     ...relevantMemories,
                     ...issues,
                 ]
@@ -847,7 +931,6 @@ export function createAgentRouter() {
                             row.evidence_passage ||
                             row.evidencePassage
                     )
-                    .slice(0, 5)
                     .map((row) => ({
                         id: row.id,
                         title: row.title,
@@ -862,6 +945,13 @@ export function createAgentRouter() {
                             row.source_document_id ||
                             null,
                     }));
+
+                const citations = [
+                    ...relevantChunks.map(
+                        formatDocumentChunkCitation
+                    ),
+                    ...recordCitations,
+                ].slice(0, 5);
 
                 return res.json({
                     question: question.trim(),
@@ -889,6 +979,9 @@ export function createAgentRouter() {
 
                     memoriesUsed:
                         relevantMemories,
+
+                    documentsUsed:
+                        relevantChunks,
 
                     citations,
 
