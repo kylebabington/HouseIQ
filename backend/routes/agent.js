@@ -11,6 +11,10 @@ import {
 } from "../services/ai/index.js";
 
 import {
+    CHAT_MODEL,
+} from "../services/ai/embeddings.js";
+
+import {
     requireAuth,
 } from "../middleware/auth.js";
 
@@ -45,6 +49,19 @@ import {
 import {
     formatLocalSeasonLine,
 } from "../lib/climateZones.js";
+
+import {
+    isMcpConfigured,
+} from "../services/mcp/cockroachMcp.js";
+
+import {
+    runMemoryAuditor,
+} from "../services/ai/memoryAuditor.js";
+
+import {
+    buildAskToolTrace,
+    snapshotMemoriesUsed,
+} from "../lib/askTrace.js";
 
 // Profile fields that are internal bookkeeping rather than
 // physical facts about the home, excluded from contextUsed.
@@ -107,7 +124,10 @@ export function createAgentRouter() {
                         confidence,
                         needs_more_info,
                         clarifying_questions,
+                        memories_used,
                         actions_taken,
+                        run_kind,
+                        tool_trace,
                         created_at
                     FROM agent_runs
                     WHERE home_id = $1
@@ -126,6 +146,191 @@ export function createAgentRouter() {
                 return res.status(500).json({
                     error:
                         "Failed to load advice history",
+                });
+            }
+        }
+    );
+
+    // ---------------------------------------------------------
+    // MEMORY AUDITOR (CockroachDB Cloud Managed MCP)
+    // ---------------------------------------------------------
+    //
+    // Read-only provenance inspection through MCP. Does not
+    // create memories, assets, or issues.
+
+    router.post(
+        "/homes/:homeId/memory-audit",
+        requireAuth,
+        askRateLimit,
+        requireHomeAccess({ minRole: "viewer" }),
+        async (req, res) => {
+            const homeId = req.authorizedHomeId;
+            const { question } = req.body || {};
+
+            if (
+                typeof question !== "string" ||
+                !question.trim()
+            ) {
+                return res.status(400).json({
+                    error: "Question is required",
+                });
+            }
+
+            if (!isMcpConfigured()) {
+                return res.status(503).json({
+                    error:
+                        "CockroachDB Cloud MCP is not configured",
+                });
+            }
+
+            let auditorResult = null;
+
+            try {
+                const homeResult = await pool.query(
+                    `
+                    SELECT id, name
+                    FROM homes
+                    WHERE id = $1
+                    `,
+                    [homeId]
+                );
+
+                const home = homeResult.rows[0] || {
+                    id: homeId,
+                    name: null,
+                };
+
+                auditorResult = await runMemoryAuditor({
+                    question: question.trim(),
+                    homeId,
+                    homeName: home.name,
+                });
+
+                const agentRunResult = await pool.query(
+                    `
+                    INSERT INTO agent_runs (
+                        home_id,
+                        user_question,
+                        answer,
+                        status,
+                        confidence,
+                        needs_more_info,
+                        clarifying_questions,
+                        memories_used,
+                        actions_taken,
+                        run_kind,
+                        tool_trace
+                    )
+                    VALUES (
+                        $1,
+                        $2,
+                        $3,
+                        $4,
+                        $5,
+                        $6,
+                        $7::JSONB,
+                        $8::JSONB,
+                        $9::JSONB,
+                        $10,
+                        $11::JSONB
+                    )
+                    RETURNING *
+                    `,
+                    [
+                        homeId,
+                        question.trim(),
+                        auditorResult.answer,
+                        "completed",
+                        "medium",
+                        false,
+                        JSON.stringify([]),
+                        JSON.stringify([]),
+                        JSON.stringify([]),
+                        "memory_audit",
+                        JSON.stringify(
+                            auditorResult.toolTrace || []
+                        ),
+                    ]
+                );
+
+                return res.json({
+                    question: question.trim(),
+                    home: {
+                        id: home.id,
+                        name: home.name,
+                    },
+                    answer: auditorResult.answer,
+                    toolTrace: auditorResult.toolTrace,
+                    model: auditorResult.model,
+                    durationMs: auditorResult.durationMs,
+                    via: "cockroachdb-cloud-mcp",
+                    agentRunId:
+                        agentRunResult.rows[0]?.id,
+                });
+            } catch (error) {
+                console.error(
+                    `Error running Memory Auditor [requestId=${req.requestId}]:`,
+                    error
+                );
+
+                try {
+                    await pool.query(
+                        `
+                        INSERT INTO agent_runs (
+                            home_id,
+                            user_question,
+                            answer,
+                            status,
+                            confidence,
+                            needs_more_info,
+                            clarifying_questions,
+                            memories_used,
+                            actions_taken,
+                            run_kind,
+                            tool_trace
+                        )
+                        VALUES (
+                            $1,
+                            $2,
+                            $3,
+                            $4,
+                            $5,
+                            $6,
+                            $7::JSONB,
+                            $8::JSONB,
+                            $9::JSONB,
+                            $10,
+                            $11::JSONB
+                        )
+                        `,
+                        [
+                            homeId,
+                            question.trim(),
+                            auditorResult?.answer || null,
+                            "failed",
+                            "low",
+                            false,
+                            JSON.stringify([]),
+                            JSON.stringify([]),
+                            JSON.stringify([]),
+                            "memory_audit",
+                            JSON.stringify(
+                                auditorResult?.toolTrace ||
+                                    []
+                            ),
+                        ]
+                    );
+                } catch (logError) {
+                    console.error(
+                        "Failed to log failed memory audit:",
+                        logError
+                    );
+                }
+
+                return res.status(500).json({
+                    error:
+                        "HouseIQ could not audit memory through CockroachDB MCP",
+                    requestId: req.requestId,
                 });
             }
         }
@@ -167,6 +372,8 @@ export function createAgentRouter() {
             let client;
             let agentResponse = null;
             let relevantMemories = [];
+            let memoriesSearched = 0;
+            const startedAt = Date.now();
 
             try {
                 // -------------------------------------------------
@@ -274,24 +481,33 @@ export function createAgentRouter() {
                     pool.query(
                         `
                     SELECT
-                        id,
-                        title,
-                        category,
-                        content,
-                        metadata,
-                        importance,
-                        created_at,
-                        evidence_passage,
-                        evidence_page,
-                        source_document_id,
-                        embedding <=> $2::VECTOR(1536)
+                        memories.id,
+                        memories.title,
+                        memories.category,
+                        memories.content,
+                        memories.metadata,
+                        memories.importance,
+                        memories.created_at,
+                        memories.evidence_passage,
+                        memories.evidence_page,
+                        memories.source_document_id,
+                        documents.file_name
+                            AS source_file_name,
+                        documents.document_type
+                            AS source_document_type,
+                        documents.document_date
+                            AS source_document_date,
+                        memories.embedding <=> $2::VECTOR(1536)
                             AS similarity_distance
                     FROM memories
-                    WHERE home_id = $1
-                      AND embedding IS NOT NULL
-                      AND COALESCE(verification_status, 'accepted') = 'accepted'
+                    LEFT JOIN documents
+                        ON documents.id =
+                            memories.source_document_id
+                    WHERE memories.home_id = $1
+                      AND memories.embedding IS NOT NULL
+                      AND COALESCE(memories.verification_status, 'accepted') = 'accepted'
                     ORDER BY
-                        embedding <=> $2::VECTOR(1536)
+                        memories.embedding <=> $2::VECTOR(1536)
                     LIMIT 8
                     `,
                         [
@@ -300,6 +516,8 @@ export function createAgentRouter() {
                         ]
                     ),
                 ]);
+
+                memoriesSearched = memoriesResult.rows.length;
 
                 // Drop weak matches so Ask is allowed to use zero memories.
                 // Keep rows with missing distance (legacy / test fakes).
@@ -722,6 +940,24 @@ export function createAgentRouter() {
                 // 10. LOG THE COMPLETE AGENT RUN
                 // -------------------------------------------------
 
+                const agentRunTrace = buildAskToolTrace({
+                    memoriesSearched,
+                    relevantMemories,
+                    profileLoaded: Boolean(profile),
+                    assetCount: assets.length,
+                    issueCount: issues.length,
+                    projectCount: projects.length,
+                    actionsTaken,
+                    memoriesProposed:
+                        createdRecords.memories.length,
+                    model: CHAT_MODEL,
+                    durationMs: Date.now() - startedAt,
+                    status: "completed",
+                });
+
+                const memoriesUsedSnapshot =
+                    snapshotMemoriesUsed(relevantMemories);
+
                 const agentRunResult =
                     await client.query(
                         `
@@ -734,7 +970,9 @@ export function createAgentRouter() {
                         needs_more_info,
                         clarifying_questions,
                         memories_used,
-                        actions_taken
+                        actions_taken,
+                        run_kind,
+                        tool_trace
                     )
                     VALUES (
                         $1,
@@ -745,7 +983,9 @@ export function createAgentRouter() {
                         $6,
                         $7::JSONB,
                         $8::JSONB,
-                        $9::JSONB
+                        $9::JSONB,
+                        $10,
+                        $11::JSONB
                     )
                     RETURNING *
                     `,
@@ -762,12 +1002,12 @@ export function createAgentRouter() {
                             ),
 
                             JSON.stringify(
-                                relevantMemories.map(
-                                    (memory) => memory.id
-                                )
+                                memoriesUsedSnapshot
                             ),
 
                             JSON.stringify(actionsTaken),
+                            "ask",
+                            JSON.stringify(agentRunTrace),
                         ]
                     );
 
@@ -888,11 +1128,20 @@ export function createAgentRouter() {
                     createdRecords,
 
                     memoriesUsed:
-                        relevantMemories,
+                        snapshotMemoriesUsed(
+                            relevantMemories
+                        ),
 
                     citations,
 
                     contextUsed,
+
+                    toolTrace: agentRunTrace,
+
+                    model: CHAT_MODEL,
+
+                    durationMs:
+                        agentRunTrace.durationMs,
 
                     agentRunId:
                         agentRun.id,
@@ -929,7 +1178,9 @@ export function createAgentRouter() {
                         needs_more_info,
                         clarifying_questions,
                         memories_used,
-                        actions_taken
+                        actions_taken,
+                        run_kind,
+                        tool_trace
                     )
                     VALUES (
                         $1,
@@ -940,7 +1191,9 @@ export function createAgentRouter() {
                         $6,
                         $7::JSONB,
                         $8::JSONB,
-                        $9::JSONB
+                        $9::JSONB,
+                        $10,
+                        $11::JSONB
                     )
                     `,
                         [
@@ -954,11 +1207,26 @@ export function createAgentRouter() {
                                 agentResponse?.clarifyingQuestions || []
                             ),
                             JSON.stringify(
-                                relevantMemories.map(
-                                    (memory) => memory.id
+                                snapshotMemoriesUsed(
+                                    relevantMemories
                                 )
                             ),
                             JSON.stringify([]),
+                            "ask",
+                            JSON.stringify(
+                                buildAskToolTrace({
+                                    memoriesSearched,
+                                    relevantMemories,
+                                    model: CHAT_MODEL,
+                                    durationMs:
+                                        Date.now() -
+                                        startedAt,
+                                    status: "failed",
+                                    error:
+                                        error.message ||
+                                        "HouseIQ could not process the request",
+                                })
+                            ),
                         ]
                     );
                 } catch (logError) {

@@ -140,6 +140,10 @@ function useHomeDashboard({
   // Controls which dashboard tab is visible.
   const [activeTab, setActiveTab] =
     useState("issues");
+  const [activeSection, setActiveSection] =
+    useState("overview");
+  const [homeTab, setHomeTab] =
+    useState("profile");
 
   // True while dashboard data is loading.
   const [
@@ -339,8 +343,9 @@ function useHomeDashboard({
     setHighlightRecord(null);
     setMemoryFormError("");
 
-    // Start each home on its profile / gate.
-    setActiveTab("profile");
+    setActiveTab("issues");
+    setActiveSection("overview");
+    setHomeTab("profile");
   }
 
 
@@ -834,8 +839,7 @@ function useHomeDashboard({
         selectedHome.id
       );
 
-      // Show the user the new document immediately.
-      setActiveTab("documents");
+      setActiveSection("documents");
     } catch (error) {
       console.error(
         "Document upload failed:",
@@ -1056,6 +1060,7 @@ function useHomeDashboard({
         selectedHome.id
       );
 
+      setActiveSection("records");
       setActiveTab("memories");
     } catch (error) {
       console.error(
@@ -1196,6 +1201,10 @@ function useHomeDashboard({
     // Dashboard UI
     activeTab,
     setActiveTab,
+    activeSection,
+    setActiveSection,
+    homeTab,
+    setHomeTab,
     isLoadingDashboard,
     dashboardError,
     refreshHomeDashboard,

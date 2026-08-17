@@ -13,6 +13,8 @@ import {
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
+import FilterChips from "../layout/FilterChips.jsx";
 
 
 // ---------------------------------------------------------
@@ -38,6 +40,7 @@ function ProjectsPanel({
   homeId,
   onRecordsChanged,
   onOpenDocument,
+  highlightId,
 }) {
   // Tracks which project or task is currently saving, so its
   // control can disable itself while the request is in flight.
@@ -47,6 +50,9 @@ function ProjectsPanel({
   // Keyed by project id so each card can show its own error.
   const [projectErrors, setProjectErrors] =
     useState({});
+
+  const [statusFilter, setStatusFilter] =
+    useState("active");
 
   async function handleProjectStatusChange(
     project,
@@ -134,6 +140,24 @@ function ProjectsPanel({
     }
   }
 
+  const planned = projects.filter(
+    (project) => project.status === "planned"
+  );
+  const active = projects.filter(
+    (project) => project.status === "in_progress"
+  );
+  const complete = projects.filter(
+    (project) =>
+      project.status === "completed" ||
+      project.status === "cancelled"
+  );
+  const visibleProjects =
+    statusFilter === "planned"
+      ? planned
+      : statusFilter === "complete"
+        ? complete
+        : active;
+
   if (projects.length === 0) {
     return (
       <div className="empty-state dashboard-empty">
@@ -149,11 +173,64 @@ function ProjectsPanel({
   }
 
   return (
-    <div className="record-grid">
-      {projects.map((project) => (
+    <div className="projects-panel-wrap">
+      <FilterChips
+        ariaLabel="Project status"
+        value={statusFilter}
+        onChange={setStatusFilter}
+        options={[
+          {
+            id: "planned",
+            label: "Planned",
+            count: planned.length,
+          },
+          {
+            id: "active",
+            label: "Active",
+            count: active.length,
+          },
+          {
+            id: "complete",
+            label: "Complete",
+            count: complete.length,
+          },
+        ]}
+      />
+      {visibleProjects.length === 0 ? (
+        <p className="muted">
+          No projects in this view.
+        </p>
+      ) : (
+    <div className="record-stack">
+      {visibleProjects.map((project) => {
+        const cost =
+          project.estimated_cost_low ||
+          project.estimated_cost_high
+            ? ` · est. ${formatCurrency(
+                project.estimated_cost_low
+              )}–${formatCurrency(
+                project.estimated_cost_high
+              )}`
+            : "";
+
+        return (
+          <CollapsibleSection
+            key={project.id}
+            title={`${project.title} — ${formatLabel(
+              project.status
+            )}${cost}`}
+            defaultOpen={
+              highlightId === project.id ||
+              project.status === "in_progress"
+            }
+          >
         <article
-          key={project.id}
-          className="record-card project-card"
+          id={`record-project-${project.id}`}
+          className={
+            highlightId === project.id
+              ? "record-card project-card record-highlight"
+              : "record-card project-card"
+          }
         >
           <div className="record-card-header">
             <div>
@@ -346,7 +423,11 @@ function ProjectsPanel({
             </p>
           )}
         </article>
-      ))}
+          </CollapsibleSection>
+        );
+      })}
+    </div>
+    )}
     </div>
   );
 }

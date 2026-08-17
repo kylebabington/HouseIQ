@@ -22,12 +22,19 @@ function NeedsBoard({
   isLoading,
   error,
   onSelectNeed,
+  hideHeader = false,
 }) {
+  const header = hideHeader ? null : (
+    <>
+      <p className="eyebrow">Your home remembers</p>
+      <h3>What your house needs</h3>
+    </>
+  );
+
   if (isLoading) {
     return (
-      <section className="needs-board panel-block">
-        <p className="eyebrow">Your home remembers</p>
-        <h3>What your house needs</h3>
+      <section className="needs-board">
+        {header}
         <p className="muted">Loading priorities…</p>
       </section>
     );
@@ -35,9 +42,8 @@ function NeedsBoard({
 
   if (error) {
     return (
-      <section className="needs-board panel-block">
-        <p className="eyebrow">Your home remembers</p>
-        <h3>What your house needs</h3>
+      <section className="needs-board">
+        {header}
         <p className="error-message" role="alert">
           {error}
         </p>
@@ -47,9 +53,8 @@ function NeedsBoard({
 
   if (!items || items.length === 0) {
     return (
-      <section className="needs-board panel-block">
-        <p className="eyebrow">Your home remembers</p>
-        <h3>What your house needs</h3>
+      <section className="needs-board">
+        {header}
         <p>
           Nothing urgent from what HouseIQ knows yet.
           Upload a document or finish onboarding to
@@ -134,13 +139,14 @@ function NeedsBoard({
     buckets["365_days"].length;
 
   return (
-    <section className="needs-board panel-block">
-      <p className="eyebrow">Your home remembers</p>
-      <h3>What your house needs</h3>
-      <p className="needs-board-intro">
-        Ranked plan for the next 30 / 90 / 365 days from
-        verified issues, projects, equipment, and climate.
-      </p>
+    <section className="needs-board">
+      {header}
+      {hideHeader ? null : (
+        <p className="needs-board-intro">
+          Ranked plan for the next 30 / 90 / 365 days from
+          verified issues, projects, equipment, and climate.
+        </p>
+      )}
 
       {hasBuckets ? (
         <>

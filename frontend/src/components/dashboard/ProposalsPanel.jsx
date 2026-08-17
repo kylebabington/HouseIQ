@@ -1,5 +1,3 @@
-// frontend/src/components/dashboard/ProposalsPanel.jsx
-
 function ProposalGroup({
   title,
   items,
@@ -7,6 +5,7 @@ function ProposalGroup({
   onAccept,
   onReject,
   isBusy,
+  readOnly = false,
 }) {
   if (!items?.length) {
     return null;
@@ -37,23 +36,25 @@ function ProposalGroup({
                 &ldquo;{item.evidence_passage}&rdquo;
               </p>
             )}
-            <div className="auth-actions" style={{ marginTop: "0.5rem" }}>
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => onAccept(kind, item.id)}
-              >
-                Accept
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={isBusy}
-                onClick={() => onReject(kind, item.id)}
-              >
-                Reject
-              </button>
-            </div>
+            {readOnly ? null : (
+              <div className="auth-actions" style={{ marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => onAccept(kind, item.id)}
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={isBusy}
+                  onClick={() => onReject(kind, item.id)}
+                >
+                  Reject
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -67,29 +68,37 @@ export default function ProposalsPanel({
   onAccept,
   onReject,
   onAcceptAll,
+  hideHeader = false,
+  readOnly = false,
 }) {
   const total = proposals?.total || 0;
 
   if (!total) {
     return (
-      <section className="panel">
-        <p className="eyebrow">Human in the loop</p>
-        <h2>Proposed changes</h2>
-        <p>
-          When HouseIQ extracts facts from documents or
-          conversations, they land here for your review first.
-        </p>
-      </section>
+      <p className="muted">
+        When HouseIQ extracts facts from documents or
+        conversations, they land here for your review first.
+      </p>
     );
   }
 
   return (
-    <section className="panel" id="houseiq-proposals-panel">
-      <header className="panel-header">
-        <div>
-          <p className="eyebrow">Human in the loop</p>
-          <h2>Proposed changes ({total})</h2>
-        </div>
+    <section id="houseiq-proposals-panel">
+      {hideHeader ? null : (
+        <header className="panel-header">
+          <div>
+            <p className="eyebrow">Human in the loop</p>
+            <h2>Proposed changes ({total})</h2>
+          </div>
+        </header>
+      )}
+
+      {readOnly ? (
+        <p className="muted">
+          These suggestions are visible in the public demo but
+          cannot be accepted here.
+        </p>
+      ) : (
         <button
           type="button"
           disabled={isBusy}
@@ -97,7 +106,7 @@ export default function ProposalsPanel({
         >
           Accept all
         </button>
-      </header>
+      )}
 
       <ProposalGroup
         title="Issues"
@@ -106,6 +115,7 @@ export default function ProposalsPanel({
         onAccept={onAccept}
         onReject={onReject}
         isBusy={isBusy}
+        readOnly={readOnly}
       />
       <ProposalGroup
         title="Projects"
@@ -114,6 +124,7 @@ export default function ProposalsPanel({
         onAccept={onAccept}
         onReject={onReject}
         isBusy={isBusy}
+        readOnly={readOnly}
       />
       <ProposalGroup
         title="Assets"
@@ -122,6 +133,7 @@ export default function ProposalsPanel({
         onAccept={onAccept}
         onReject={onReject}
         isBusy={isBusy}
+        readOnly={readOnly}
       />
       <ProposalGroup
         title="Memories"
@@ -130,6 +142,7 @@ export default function ProposalsPanel({
         onAccept={onAccept}
         onReject={onReject}
         isBusy={isBusy}
+        readOnly={readOnly}
       />
     </section>
   );

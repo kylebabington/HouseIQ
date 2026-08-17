@@ -11,9 +11,52 @@ and HouseIQ can show you exactly where it learned what it knows.
 
 [Live Demo](#) · [Demo Video](#)
 
+License: [MIT](LICENSE)
+
 > Open **Explore demo home** on the landing page (no Auth0 required) to use the
-> 1978 Indianapolis Ranch: ranked needs with inspection page citations, then a
+> Indianapolis house: ranked needs with inspection page citations, then a
 > sample Ask answer with evidence.
+
+## Hackathon Technologies
+
+### CockroachDB Distributed Vector Indexing
+
+Ask embeds the homeowner's question and retrieves memories with CockroachDB
+vector distance:
+
+`memories.embedding <=> $query::VECTOR(1536)`
+
+That query is the memory lookup. It is not an application-side cosine loop.
+The Agent Run Inspector shows how many memories were searched and which
+ones cleared the similarity cutoff. **Why HouseIQ knows this** lists those
+rows with source document and score.
+
+### CockroachDB Managed MCP
+
+The Memory Auditor is a second agent. It does **not** use the Ask/RAG path.
+It connects to CockroachDB Cloud Managed MCP
+(`https://cockroachlabs.cloud/mcp`) with a service-account API key and
+`mcp-cluster-id`, then inspects `home_assets`, `memories`, `home_issues`,
+`maintenance_events`, `documents`, and `record_evidence` through
+home-scoped `SELECT`s.
+
+Example:
+
+> Show me everything HouseIQ currently knows about the HVAC system and where that knowledge came from.
+
+The MCP tool trace is stored on `agent_runs` (`run_kind = memory_audit`).
+
+### Amazon S3
+
+Original inspections, invoices, warranties, manuals, and photos are stored
+in a private S3 bucket. HouseIQ cites those files; it does not replace them
+with model output. Failed S3 uploads do not complete ingestion. See
+[`DOCS/PRODUCTION.md`](DOCS/PRODUCTION.md).
+
+### Why CockroachDB Matters
+
+HouseIQ's durable memory is independent of the LLM. Models can change, but
+the verified history of the home remains.
 
 ## The problem
 
@@ -36,61 +79,55 @@ tells you what matters next — with evidence.
 
 ## Signature demo
 
-Build the entire walkthrough around **one house**: the 1978 Indianapolis Ranch.
-Sample files live in [`DOCS/`](DOCS/). Do not tour every tab.
+Build the entire walkthrough around **one house**: the Indianapolis demo home.
+The 15-year record lives in
+[`DOCS/HouseIQ_Starter_Upload_Batch_36/`](DOCS/HouseIQ_Starter_Upload_Batch_36/).
+See [`DOCS/DEMO.md`](DOCS/DEMO.md) for upload order. Do not tour every tab.
 
-### Scene 1 — HouseIQ knows almost nothing
+### Scene 1 — Homes forget
 
-When you buy a house, you're handed piles of paperwork. Five years later, nobody
-remembers where anything is.
+Homes accumulate decades of repairs, inspections, and maintenance, but
+homeowners rarely have a usable memory of any of it.
 
-Create or seed the Ranch (signed-in: **Seed Indianapolis Ranch**), or open
+Create or seed the house (signed-in: **Seed Indianapolis Ranch**), or open
 **Explore demo home** for the public preview.
 
-### Scene 2 — Upload the inspection
+### Scene 2 — Show the history
 
-Upload [`DOCS/Fictitious_Home_Inspection_Report.pdf`](DOCS/Fictitious_Home_Inspection_Report.pdf)
-as an *Inspection report*. HouseIQ reads it and shows **Proposed changes** —
-for example service mast deterioration — with the evidence passage
-(*Inspection · p.18*). Click **Accept**.
+Upload the batch in order (2012 inspection through 2025 HVAC inspection).
+HouseIQ should keep **one furnace** and **one air conditioner**, with later
+invoices attached as evidence — not a new furnace every service year.
 
-HouseIQ doesn't blindly trust its AI. It proposes what it learned, shows its
-evidence, and the homeowner decides what becomes true.
+### Scene 3 — Add a 2026 document
 
-### Scene 3 — Time passes
-
-Six months later, the HVAC technician comes. Upload
-[`DOCS/SAMPLE HVAC REPAIR INVOICE.txt`](DOCS/SAMPLE HVAC REPAIR INVOICE.txt)
-as a *Repair invoice*.
-
-HouseIQ recognizes that this isn't some unrelated furnace. It's information
-about the furnace the house already knows about.
-
-This is the important part: **HouseIQ isn't analyzing isolated documents. It's
-building the memory of the house over time.**
+Upload [`DOCS/SAMPLE HVAC REPAIR INVOICE.txt`](DOCS/SAMPLE HVAC REPAIR INVOICE.txt)
+as a *Repair invoice*. HouseIQ should recognize the existing Carrier AC.
 
 ### Scene 4 — Ask the killer question
 
 Ask:
 
-> What should I handle before winter?
+> What major expenses should I prepare for over the next three years?
 
-HouseIQ uses location, climate, property profile, inspection findings, equipment,
-maintenance history, and outstanding issues — then gives a ranked plan. Click the
-evidence. Done.
+Open **Why HouseIQ knows this**. Show vector-retrieved memories and sources.
 
-### Scene 5 — End with the Passport
+### Scene 5 — Memory Auditor (CockroachDB MCP)
 
-When you need someone else to work on the house, you don't have to explain five
-years of history. Click **Generate Contractor Home Passport**. Show major systems,
-current concerns, recent work, and evidence. Stop there.
+Ask the Memory Auditor:
+
+> What evidence supports what HouseIQ believes about the furnace?
+
+Show the MCP tool trace hitting CockroachDB. The model is not HouseIQ's
+memory. CockroachDB is.
 
 ## Architecture
 
+See the diagram in [`DOCS/ARCHITECTURE.md`](DOCS/ARCHITECTURE.md).
+
 - **Frontend** — React + Vite
 - **Backend** — Express (Node.js)
-- **Database** — CockroachDB (Postgres-compatible, with `pgvector`-style vector
-  search for semantic memory retrieval)
+- **Database** — CockroachDB Cloud (distributed vector index on `memories`)
+- **MCP** — CockroachDB Cloud Managed MCP (Memory Auditor)
 - **Auth** — Auth0 (Authorization Code + PKCE on the frontend, JWT bearer
   validation on the backend)
 - **AI** — OpenAI (chat completions with Structured Outputs for the agent,
@@ -141,6 +178,10 @@ to see the Ranch without signing in.
 | `AWS_S3_BUCKET_NAME` | Private S3 bucket for uploaded home documents. |
 | `AWS_ACCESS_KEY_ID` | Local-development-only AWS credential (use an IAM role in production). |
 | `AWS_SECRET_ACCESS_KEY` | Local-development-only AWS credential (use an IAM role in production). |
+| `COCKROACH_MCP_URL` | CockroachDB Cloud MCP endpoint (default `https://cockroachlabs.cloud/mcp`). |
+| `COCKROACH_MCP_API_KEY` | Cloud service-account API key (not the SQL user in `DATABASE_URL`). |
+| `COCKROACH_CLUSTER_ID` | Cluster UUID from the Cloud console overview URL. |
+| `COCKROACH_MCP_DATABASE` | Database the Memory Auditor should inspect (default `houseiq`). |
 
 #### `frontend/.env`
 
@@ -169,4 +210,14 @@ A ready-to-use Postman collection (with automatic Auth0 token handling) lives in
 
 Public demo: `GET /api/demo/home`. Authenticated extras include
 `GET /homes/:homeId/needs`, `GET /homes/:homeId/passport`,
-`GET /homes/:homeId/agent-runs`, and `/homes/:homeId/members`.
+`GET /homes/:homeId/agent-runs`, `POST /homes/:homeId/memory-audit`,
+and `/homes/:homeId/members`.
+
+Cockroach MCP smoke check (requires `.env` keys):
+
+```bash
+cd backend && npm run mcp:smoke
+```
+
+Failure behavior is documented in [`DOCS/PRODUCTION.md`](DOCS/PRODUCTION.md).
+The 15-year upload script for judges is [`DOCS/DEMO.md`](DOCS/DEMO.md).

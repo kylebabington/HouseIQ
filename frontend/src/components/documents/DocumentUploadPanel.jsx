@@ -25,34 +25,37 @@ function DocumentUploadPanel({
   documentUploadResult,
   setDocumentUploadResult,
   uploadDocument,
+  hideHeader = false,
 }) {
   return (
     <section
       id="houseiq-document-upload-section"
       className="document-upload-section"
     >
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">
-            Build home memory automatically
-          </p>
+      {hideHeader ? null : (
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">
+              Build home memory automatically
+            </p>
 
-          <h3>
-            Upload a home document or photo
-          </h3>
+            <h3>
+              Upload a home document or photo
+            </h3>
 
-          <p className="section-description">
-            Inspection reports, invoices, warranties,
-            manuals, or a phone photo of a nameplate /
-            report page. HouseIQ extracts facts and
-            updates this home&apos;s memory.
-          </p>
+            <p className="section-description">
+              Inspection reports, invoices, warranties,
+              manuals, or a phone photo of a nameplate /
+              report page. HouseIQ extracts facts and
+              updates this home&apos;s memory.
+            </p>
+          </div>
+
+          <span className="document-support-badge">
+            PDF, TXT, or photo
+          </span>
         </div>
-
-        <span className="document-support-badge">
-          PDF, TXT, or photo
-        </span>
-      </div>
+      )}
 
       <form
         onSubmit={uploadDocument}

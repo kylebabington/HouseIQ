@@ -14,8 +14,20 @@ import {
 } from "../../utils/formatters.js";
 
 import AdviceHistoryPanel from "../agent/AdviceHistoryPanel.jsx";
-import NeedsBoard from "../dashboard/NeedsBoard.jsx";
 import TimelinePanel from "../dashboard/TimelinePanel.jsx";
+import DocumentsPanel from "../dashboard/DocumentsPanel.jsx";
+import OverviewPage from "../dashboard/OverviewPage.jsx";
+import YourHomesPanel from "../homes/YourHomesPanel.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
+import WorkspaceNav from "../layout/WorkspaceNav.jsx";
+import ShareHomePanel from "../home-profile/ShareHomePanel.jsx";
+import {
+  HOME_TABS,
+  PRIMARY_SECTIONS,
+  RECORD_TABS,
+  destinationFromTab,
+  homeSubtitle,
+} from "../../workspace/navigation.js";
 
 function normalizeQuestion(value) {
   return String(value || "")
@@ -73,6 +85,8 @@ export default function DemoExplore({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("issues");
+  const [activeSection, setActiveSection] = useState("overview");
+  const [homeTab, setHomeTab] = useState("profile");
   const [question, setQuestion] = useState("");
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [askMessage, setAskMessage] = useState("");
@@ -162,27 +176,6 @@ export default function DemoExplore({
     [agentRuns, selectedRunId]
   );
 
-  const documentTypeSummary = useMemo(() => {
-    const counts = new Map();
-
-    for (const document of documents) {
-      const key =
-        document.document_type || "general";
-
-      counts.set(
-        key,
-        (counts.get(key) || 0) + 1
-      );
-    }
-
-    return [...counts.entries()]
-      .map(
-        ([type, count]) =>
-          `${count} ${formatLabel(type)}`
-      )
-      .join(" · ");
-  }, [documents]);
-
   function selectSavedQuestion(run) {
     setQuestion(run.user_question || "");
     setSelectedRunId(run.id);
@@ -232,7 +225,22 @@ export default function DemoExplore({
     selectSavedQuestion(close);
   }
 
+  function navigateTo(section, extras = {}) {
+    setActiveSection(section);
+    if (extras.tab) {
+      setActiveTab(extras.tab);
+    }
+    if (extras.homeTab) {
+      setHomeTab(extras.homeTab);
+    }
+  }
+
   function handleSelectNeed(item) {
+    if (item.kind === "seasonal") {
+      navigateTo("history");
+      return;
+    }
+
     const tabByKind = {
       issue: "issues",
       project: "projects",
@@ -240,10 +248,10 @@ export default function DemoExplore({
       asset: "assets",
     };
 
-    const nextTab =
-      tabByKind[item.kind] || "issues";
-
-    setActiveTab(nextTab);
+    const nextTab = tabByKind[item.kind] || "issues";
+    const destination = destinationFromTab(nextTab);
+    setActiveSection(destination.section);
+    setActiveTab(destination.tab);
     setHighlightRecord({
       kind: item.kind,
       id: item.id,
@@ -755,98 +763,269 @@ export default function DemoExplore({
     );
   }
 
-  function renderDocuments() {
-    if (documents.length === 0) {
-      return (
-        <div className="empty-state dashboard-empty">
-          <h4>No demo documents yet</h4>
-          <p>
-            Upload documents to the configured demo home while
-            signed in and they will appear here.
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="record-grid">
-        {documents.map((document) => (
-          <article
-            key={document.id}
-            id={`demo-record-documents-${document.id}`}
-            className="record-card"
-          >
-            <div className="record-card-header">
-              <div>
-                <span className="record-type">
-                  {formatLabel(
-                    document.document_type ||
-                      "document"
-                  )}
-                </span>
-                <h4>
-                  {document.file_name ||
-                    "Home document"}
-                </h4>
-              </div>
-            </div>
-
-            <div className="record-detail">
-              <strong>Document date</strong>
-              <span>
-                {formatDate(
-                  document.document_date ||
-                    document.created_at
-                )}
-              </span>
-            </div>
-
-            {document.contractor_or_company ? (
-              <div className="record-detail">
-                <strong>Company</strong>
-                <span>
-                  {document.contractor_or_company}
-                </span>
-              </div>
-            ) : null}
-
-            {document.total_amount ? (
-              <div className="record-detail">
-                <strong>Amount</strong>
-                <span>
-                  {formatCurrency(
-                    document.total_amount
-                  )}
-                </span>
-              </div>
-            ) : null}
-
-            {document.summary ? (
-              <p className="record-description">
-                {document.summary}
-              </p>
-            ) : null}
-          </article>
-        ))}
-      </div>
-    );
-  }
-
-  function renderActiveTab() {
+  function renderRecordsTab() {
     switch (activeTab) {
-      case "profile":
-        return renderProfile();
       case "projects":
         return renderProjects();
       case "assets":
         return renderAssets();
       case "memories":
         return renderMemories();
-      case "documents":
-        return renderDocuments();
       case "issues":
       default:
         return renderIssues();
+    }
+  }
+
+  function renderHomeTab() {
+    switch (homeTab) {
+      case "passport":
+        return (
+          <p className="muted">
+            The printable Home Passport is available after you
+            log in. This public demo is read-only.
+          </p>
+        );
+      case "sharing":
+        return (
+          <ShareHomePanel
+            members={[]}
+            isOwner={false}
+            readOnly
+          />
+        );
+      case "homes":
+        return (
+          <CollapsibleSection
+            title="Your Homes — 1 property"
+            defaultOpen
+          >
+            <YourHomesPanel
+              homes={[home]}
+              selectedHome={home}
+              readOnly
+              canCreate={false}
+              canDelete={false}
+            />
+            <p className="muted">
+              The public demo cannot create, switch, or delete
+              homes.
+            </p>
+          </CollapsibleSection>
+        );
+      case "profile":
+      default:
+        return renderProfile();
+    }
+  }
+
+  function renderAskPage() {
+    return (
+      <div className="workspace-page">
+        <CollapsibleSection
+          title="Ask HouseIQ — Replay a saved answer from this home"
+          defaultOpen
+          priority
+        >
+          <section className="agent-section">
+            <p>
+              These answers were generated previously against
+              this demo home. Submitting here performs no
+              network request and never calls OpenAI.
+            </p>
+
+            <form className="stack" onSubmit={handleDemoAsk}>
+              <textarea
+                id="houseiq-agent-textarea"
+                value={question}
+                onChange={(event) => {
+                  setQuestion(event.target.value);
+                  setAskMessage("");
+                }}
+                placeholder={
+                  agentRuns.length > 0
+                    ? "Choose a saved question below"
+                    : "No saved demo answers yet"
+                }
+                disabled={agentRuns.length === 0}
+              />
+              <button
+                type="submit"
+                disabled={agentRuns.length === 0}
+              >
+                Ask HouseIQ
+              </button>
+            </form>
+
+            {agentRuns.length > 0 ? (
+              <div className="demo-cta-buttons">
+                {agentRuns.slice(0, 6).map((run) => (
+                  <button
+                    key={run.id}
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => selectSavedQuestion(run)}
+                  >
+                    {run.user_question}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="status-message">
+                No saved answers exist for this home yet. Once
+                the document set is uploaded, ask the curated
+                demo questions while signed in; those real
+                answers will automatically become replayable
+                here.
+              </p>
+            )}
+
+            {askMessage ? (
+              <p className="status-message" role="status">
+                {askMessage}
+              </p>
+            ) : null}
+
+            {selectedRun ? (
+              <div className="turn-response">
+                <div className="turn-response-header">
+                  <span className="turn-response-label">
+                    HouseIQ
+                  </span>
+                  <span>
+                    {formatLabel(
+                      selectedRun.confidence || "medium"
+                    )}{" "}
+                    confidence
+                  </span>
+                </div>
+                <div className="answer-box">
+                  {selectedRun.answer}
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title={
+            agentRuns.length
+              ? `Agent Run Inspector — ${agentRuns.length} run${
+                  agentRuns.length === 1 ? "" : "s"
+                }`
+              : "Agent Run Inspector — no runs yet"
+          }
+          defaultOpen={false}
+        >
+          <AdviceHistoryPanel
+            runs={agentRuns}
+            isLoading={false}
+            error=""
+            hideHeader
+          />
+        </CollapsibleSection>
+      </div>
+    );
+  }
+
+  function renderSection() {
+    switch (activeSection) {
+      case "ask":
+        return renderAskPage();
+
+      case "documents":
+        return (
+          <div className="workspace-page">
+            <CollapsibleSection
+              title="Upload a Document — disabled in the public demo"
+              defaultOpen={false}
+            >
+              <p>
+                Anonymous visitors cannot add or change
+                documents. The configured demo home currently
+                contains <strong>{documents.length}</strong>{" "}
+                uploaded document
+                {documents.length === 1 ? "" : "s"}.
+              </p>
+            </CollapsibleSection>
+            <DocumentsPanel
+              documents={documents}
+              canDelete={false}
+            />
+          </div>
+        );
+
+      case "records":
+        return (
+          <div className="workspace-page">
+            <WorkspaceNav
+              items={RECORD_TABS}
+              value={
+                RECORD_TABS.some((tab) => tab.id === activeTab)
+                  ? activeTab
+                  : "issues"
+              }
+              onChange={setActiveTab}
+              ariaLabel="Demo home records"
+              variant="sub"
+              counts={{
+                issues: issues.length,
+                projects: projects.length,
+                assets: assets.length,
+                memories: memories.length,
+              }}
+            />
+            <div key={activeTab} className="tab-content">
+              {renderRecordsTab()}
+            </div>
+          </div>
+        );
+
+      case "history":
+        return (
+          <CollapsibleSection
+            title={
+              timeline.length
+                ? `Home Timeline — ${timeline.length} recorded event${
+                    timeline.length === 1 ? "" : "s"
+                  }`
+                : "Home Timeline — no events yet"
+            }
+            defaultOpen
+          >
+            <TimelinePanel events={timeline} />
+          </CollapsibleSection>
+        );
+
+      case "home":
+        return (
+          <div className="workspace-page">
+            <WorkspaceNav
+              items={HOME_TABS}
+              value={homeTab}
+              onChange={setHomeTab}
+              ariaLabel="Home settings"
+              variant="sub"
+            />
+            <div key={homeTab} className="tab-content">
+              {renderHomeTab()}
+            </div>
+          </div>
+        );
+
+      case "overview":
+      default:
+        return (
+          <OverviewPage
+            needsItems={needs}
+            onSelectNeed={handleSelectNeed}
+            timelineEvents={timeline}
+            proposals={proposals}
+            proposalsReadOnly
+            showUploadAction={false}
+            onNavigate={(section) => navigateTo(section)}
+          />
+        );
     }
   }
 
@@ -920,343 +1099,45 @@ export default function DemoExplore({
         </div>
       </header>
 
-      <section className="layout">
-        <aside className="panel sidebar">
-          <h2>Demo Home</h2>
-
-          <p className="muted">
-            This sidebar mirrors the signed-in app, but the
-            public demo cannot create, edit, upload, delete,
-            or make live AI requests.
-          </p>
-
-          <div className="home-list">
+      <div className="workspace-chrome">
+        <header className="workspace-home-banner">
+          <div>
+            <h1>{home.name}</h1>
+            <p className="workspace-home-meta">
+              {homeSubtitle(home, profile) ||
+                home.notes ||
+                "Document-backed demo"}
+            </p>
+            <span className="onboarding-badge onboarding-completed">
+              Read-only demo
+            </span>
+          </div>
+          <div className="workspace-home-actions">
             <button
               type="button"
-              className="home-card active"
-              disabled
+              className="secondary-button"
+              onClick={() =>
+                navigateTo("home", { homeTab: "homes" })
+              }
             >
-              <strong>{home.name}</strong>
-              {home.year_built ? (
-                <span>
-                  Built {home.year_built}
-                </span>
-              ) : null}
+              Switch home
             </button>
           </div>
+        </header>
 
-          <div className="panel-block">
-            <p className="eyebrow">
-              Demo guardrails
-            </p>
-            <p>
-              One cached snapshot powers this entire screen.
-              Saved answers replay locally, so anonymous users
-              cannot spend OpenAI tokens.
-            </p>
-          </div>
-        </aside>
+        <WorkspaceNav
+          items={PRIMARY_SECTIONS}
+          value={activeSection}
+          onChange={(section) => navigateTo(section)}
+          ariaLabel="HouseIQ sections"
+        />
+      </div>
 
-        <section className="panel main-panel">
-          <header className="selected-home-header">
-            <div>
-              <p className="eyebrow">
-                Current home
-              </p>
-              <h1>{home.name}</h1>
-
-              <span className="onboarding-badge onboarding-completed">
-                Document-backed demo
-              </span>
-
-              {home.notes ? (
-                <p>{home.notes}</p>
-              ) : null}
-            </div>
-          </header>
-
-          <section className="demo-cta-row">
-            <p className="demo-cta-copy">
-              Everything below comes from the configured demo
-              home&apos;s uploaded documents and the records HouseIQ
-              extracted from them. The public demo is read-only.
-            </p>
-
-            <div className="demo-cta-buttons">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  document
-                    .getElementById(
-                      "houseiq-agent-textarea"
-                    )
-                    ?.focus()
-                }
-              >
-                Ask HouseIQ
-              </button>
-
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  setActiveTab("documents")
-                }
-              >
-                View documents
-              </button>
-
-              {typeof loginWithRedirect === "function" ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => loginWithRedirect()}
-                >
-                  Use HouseIQ
-                </button>
-              ) : null}
-            </div>
-          </section>
-
-          <NeedsBoard
-            items={needs}
-            onSelectNeed={handleSelectNeed}
-          />
-
-          {proposals.total > 0 ? (
-            <div className="proposals-banner">
-              <p>
-                HouseIQ has {proposals.total} document-derived
-                proposal
-                {proposals.total === 1 ? "" : "s"} awaiting
-                review. They are visible in the record tabs but
-                cannot be accepted from the public demo.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="agent-upload-row panel-enter">
-            <section className="panel-block">
-              <p className="eyebrow">
-                Ask HouseIQ
-              </p>
-              <h3>Replay a real saved answer</h3>
-              <p>
-                These answers were generated previously against
-                this demo home. Submitting here performs no
-                network request and never calls OpenAI.
-              </p>
-
-              <form
-                className="stack"
-                onSubmit={handleDemoAsk}
-              >
-                <textarea
-                  id="houseiq-agent-textarea"
-                  value={question}
-                  onChange={(event) => {
-                    setQuestion(
-                      event.target.value
-                    );
-                    setAskMessage("");
-                  }}
-                  placeholder={
-                    agentRuns.length > 0
-                      ? "Choose a saved question below"
-                      : "No saved demo answers yet"
-                  }
-                  disabled={agentRuns.length === 0}
-                />
-
-                <button
-                  type="submit"
-                  disabled={agentRuns.length === 0}
-                >
-                  Ask HouseIQ
-                </button>
-              </form>
-
-              {agentRuns.length > 0 ? (
-                <div className="demo-cta-buttons">
-                  {agentRuns
-                    .slice(0, 6)
-                    .map((run) => (
-                      <button
-                        key={run.id}
-                        type="button"
-                        className="secondary-button"
-                        onClick={() =>
-                          selectSavedQuestion(run)
-                        }
-                      >
-                        {run.user_question}
-                      </button>
-                    ))}
-                </div>
-              ) : (
-                <p className="status-message">
-                  No saved answers exist for this home yet. Once
-                  the document set is uploaded, ask the curated
-                  demo questions while signed in; those real
-                  answers will automatically become replayable
-                  here.
-                </p>
-              )}
-
-              {askMessage ? (
-                <p
-                  className="status-message"
-                  role="status"
-                >
-                  {askMessage}
-                </p>
-              ) : null}
-
-              {selectedRun ? (
-                <div className="turn-response">
-                  <div className="turn-response-header">
-                    <span className="turn-response-label">
-                      HouseIQ
-                    </span>
-                    <span>
-                      {formatLabel(
-                        selectedRun.confidence ||
-                          "medium"
-                      )} confidence
-                    </span>
-                  </div>
-                  <div className="answer-box">
-                    {selectedRun.answer}
-                  </div>
-                </div>
-              ) : null}
-            </section>
-
-            <section
-              id="houseiq-document-upload-section"
-              className="panel-block"
-            >
-              <p className="eyebrow">
-                Documents
-              </p>
-              <h3>Upload disabled in public demo</h3>
-              <p>
-                The configured demo home currently contains
-                <strong> {documents.length} </strong>
-                uploaded document
-                {documents.length === 1 ? "" : "s"}.
-                Anonymous visitors cannot add or change them.
-              </p>
-
-              {documentTypeSummary ? (
-                <p className="muted">
-                  {documentTypeSummary}
-                </p>
-              ) : null}
-
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  setActiveTab("documents")
-                }
-              >
-                Browse document history
-              </button>
-            </section>
-          </div>
-
-          <AdviceHistoryPanel
-            runs={agentRuns}
-            isLoading={false}
-            error=""
-          />
-
-          <section className="dashboard-section">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">
-                  Long-term memory
-                </p>
-                <h3>
-                  Home Record Dashboard
-                </h3>
-              </div>
-            </div>
-
-            <div className="dashboard-summary">
-              <div>
-                <strong>{issues.length}</strong>
-                <span>Issues</span>
-              </div>
-              <div>
-                <strong>{projects.length}</strong>
-                <span>Projects</span>
-              </div>
-              <div>
-                <strong>{assets.length}</strong>
-                <span>Assets</span>
-              </div>
-              <div>
-                <strong>{memories.length}</strong>
-                <span>Memories</span>
-              </div>
-              <div>
-                <strong>{documents.length}</strong>
-                <span>Documents</span>
-              </div>
-            </div>
-
-            <nav
-              className="tab-list"
-              role="tablist"
-              aria-label="Demo home records"
-            >
-              {[
-                ["profile", "Profile", null],
-                ["issues", "Issues", issues.length],
-                ["projects", "Projects", projects.length],
-                ["assets", "Assets", assets.length],
-                ["memories", "Memories", memories.length],
-                ["documents", "Documents", documents.length],
-              ].map(([key, label, count]) => (
-                <button
-                  key={key}
-                  type="button"
-                  id={`demo-tab-${key}`}
-                  role="tab"
-                  aria-selected={activeTab === key}
-                  aria-controls="demo-dashboard-tabpanel"
-                  className={
-                    activeTab === key
-                      ? "tab-button active"
-                      : "tab-button"
-                  }
-                  onClick={() =>
-                    setActiveTab(key)
-                  }
-                >
-                  {label}
-                  {count != null ? (
-                    <span>{count}</span>
-                  ) : null}
-                </button>
-              ))}
-            </nav>
-
-            <div
-              key={activeTab}
-              id="demo-dashboard-tabpanel"
-              role="tabpanel"
-              aria-labelledby={`demo-tab-${activeTab}`}
-              className="tab-content"
-            >
-              {renderActiveTab()}
-            </div>
-          </section>
-        </section>
-      </section>
+      <div className="workspace">
+        <div className="workspace-inner">
+          {renderSection()}
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,0 +1,217 @@
+SAMPLE HVAC REPAIR INVOICE
+FOR TESTING PURPOSES ONLY — NOT A REAL INVOICE
+
+---
+
+## COMPANY INFORMATION
+
+CoolBreeze Heating & Air, LLC
+2450 Westfield Service Road
+Indianapolis, IN 46240
+
+Phone: (317) 555-0148
+Email: [service@coolbreeze-example.com](mailto:service@coolbreeze-example.com)
+Website: [www.coolbreeze-example.com](http://www.coolbreeze-example.com)
+
+Indiana HVAC Contractor License: SAMPLE-48291
+
+---
+
+## INVOICE DETAILS
+
+Invoice Number: CB-2026-0718
+Work Order Number: WO-10482
+Invoice Date: July 18, 2026
+Service Date: July 18, 2026
+Payment Due: July 18, 2026
+Payment Status: PAID
+
+---
+
+## CUSTOMER INFORMATION
+
+Customer Name: Jordan Miller
+Service Address:
+1842 Maple Ridge Drive
+Indianapolis, IN 46227
+
+Phone: (317) 555-0186
+Email: [jordan.miller@example.com](mailto:jordan.miller@example.com)
+
+---
+
+## EQUIPMENT INFORMATION
+
+Equipment Type: Central Air Conditioning System
+Manufacturer: Carrier
+Model Number: 24ACC636A003
+Serial Number: SAMPLE2406C7812
+System Size: 3 Ton
+Approximate Equipment Age: 9 Years
+Location: Exterior condenser and basement air handler
+
+---
+
+## CUSTOMER COMPLAINT
+
+Customer reported that the air-conditioning system was running continuously but was not cooling the home below 78 degrees. Customer also reported reduced airflow from several upstairs vents and an unusual buzzing sound from the outdoor condenser unit.
+
+---
+
+## DIAGNOSTIC FINDINGS
+
+Technician inspected the thermostat, indoor air handler, evaporator coil, electrical components, refrigerant pressures, outdoor condenser, and accessible ductwork.
+
+The following conditions were found:
+
+1. The dual-run capacitor in the outdoor condenser tested below the manufacturer’s acceptable range.
+
+2. The condenser fan motor was slow to start due to the weakened capacitor.
+
+3. The return-air filter was heavily restricted with dust and debris.
+
+4. Refrigerant pressure was slightly below the expected operating range.
+
+5. No visible refrigerant leaks were found during the initial electronic leak inspection.
+
+6. The evaporator coil showed light surface dirt but was not frozen at the time of inspection.
+
+7. Electrical connections were checked and tightened where necessary.
+
+---
+
+## REPAIRS PERFORMED
+
+* Removed and replaced the failed 45/5 microfarad dual-run capacitor.
+
+* Installed a new 16 x 25 x 1 pleated air filter.
+
+* Added 1.0 pound of R-410A refrigerant to bring system pressures within the recommended operating range.
+
+* Cleaned loose debris from the outdoor condenser cabinet.
+
+* Tightened accessible electrical terminals.
+
+* Tested condenser fan motor startup and operation.
+
+* Verified thermostat operation.
+
+* Measured supply-air temperature after repairs.
+
+* Confirmed that the system was cooling properly before leaving the property.
+
+---
+
+## PARTS AND SERVICES
+
+Diagnostic Service Call
+Quantity: 1
+Unit Price: $89.00
+Total: $89.00
+
+45/5 MFD Dual-Run Capacitor
+Quantity: 1
+Unit Price: $148.00
+Total: $148.00
+
+R-410A Refrigerant
+Quantity: 1.0 lb
+Unit Price: $125.00
+Total: $125.00
+
+16 x 25 x 1 Pleated Air Filter
+Quantity: 1
+Unit Price: $24.00
+Total: $24.00
+
+HVAC Repair Labor
+Quantity: 1.5 hours
+Unit Price: $115.00
+Total: $172.50
+
+Condenser Cleaning and Electrical Inspection
+Quantity: 1
+Unit Price: $65.00
+Total: $65.00
+
+---
+
+## PAYMENT SUMMARY
+
+Parts and Services Subtotal: $623.50
+Sales Tax: $20.79
+Discount: -$25.00
+
+TOTAL AMOUNT: $619.29
+
+Payment Method: Visa ending in 4242
+Amount Paid: $619.29
+Balance Due: $0.00
+
+Payment Status: PAID IN FULL
+
+---
+
+## SYSTEM PERFORMANCE AFTER REPAIR
+
+Outdoor Temperature: 89°F
+Indoor Temperature at Arrival: 78°F
+Thermostat Setting: 72°F
+Return-Air Temperature: 77°F
+Supply-Air Temperature: 58°F
+Temperature Difference: 19°F
+
+Refrigerant pressures and operating temperatures were within an acceptable range at the completion of service.
+
+---
+
+## TECHNICIAN RECOMMENDATIONS
+
+1. Replace the air filter every 30 to 90 days, depending on household conditions, pets, and system use.
+
+2. Schedule annual air-conditioning maintenance before the beginning of each cooling season.
+
+3. Monitor system performance over the next several weeks.
+
+4. If cooling performance decreases again, schedule a full refrigerant leak search.
+
+5. Consider having the evaporator and condenser coils professionally cleaned during the next maintenance appointment.
+
+6. Due to the age of the equipment, begin planning financially for possible system replacement within the next several years.
+
+---
+
+## WARRANTY INFORMATION
+
+The replacement capacitor includes a one-year limited parts warranty from the date of service.
+
+Labor performed on this invoice is covered for 90 days.
+
+Warranty coverage does not include unrelated equipment failures, improper maintenance, power surges, weather damage, refrigerant leaks, or customer-supplied equipment.
+
+---
+
+## CUSTOMER AUTHORIZATION
+
+The customer authorized the diagnostic work and repairs listed on this invoice.
+
+Customer Name: Jordan Miller
+Customer Signature: /s/ Jordan Miller
+Authorization Date: July 18, 2026
+
+---
+
+## TECHNICIAN INFORMATION
+
+Technician Name: Alex Carter
+Technician ID: HVAC-038
+Arrival Time: 1:35 PM
+Completion Time: 3:22 PM
+
+Technician Signature: /s/ Alex Carter
+
+---
+
+## DISCLAIMER
+
+This document is entirely fictional and was created solely for software testing, demonstrations, training, and sample-data purposes. The company, customer, equipment identifiers, contact information, invoice numbers, and service details are not associated with a real transaction.

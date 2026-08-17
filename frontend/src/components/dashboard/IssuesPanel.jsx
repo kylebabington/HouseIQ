@@ -12,6 +12,8 @@ import {
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
+import FilterChips from "../layout/FilterChips.jsx";
 
 
 // ---------------------------------------------------------
@@ -56,6 +58,8 @@ function IssuesPanel({
     useState("");
   const [isCreating, setIsCreating] =
     useState(false);
+  const [statusFilter, setStatusFilter] =
+    useState("active");
   async function handleStatusChange(
     issue,
     newStatus
@@ -140,13 +144,33 @@ function IssuesPanel({
     }
   }
 
+  const activeIssues = issues.filter(
+    (issue) =>
+      issue.status === "open" ||
+      issue.status === "in_progress"
+  );
+  const resolvedIssues = issues.filter(
+    (issue) =>
+      issue.status === "resolved" ||
+      issue.status === "closed"
+  );
+  const visibleIssues =
+    statusFilter === "active"
+      ? activeIssues
+      : statusFilter === "resolved"
+        ? resolvedIssues
+        : issues;
+
   return (
     <div className="issues-panel-wrap">
+      <CollapsibleSection
+        title="Add an issue — log a leak, malfunction, or concern"
+        defaultOpen={false}
+      >
       <form
         className="stack manual-create-form"
         onSubmit={createIssue}
       >
-        <h4>Add an issue manually</h4>
         <input
           value={createForm.title}
           onChange={(event) =>
@@ -190,6 +214,7 @@ function IssuesPanel({
           </p>
         ) : null}
       </form>
+      </CollapsibleSection>
 
       {issues.length === 0 ? (
         <div className="empty-state dashboard-empty">
@@ -201,8 +226,36 @@ function IssuesPanel({
           </p>
         </div>
       ) : (
+    <>
+    <FilterChips
+      ariaLabel="Issue status"
+      value={statusFilter}
+      onChange={setStatusFilter}
+      options={[
+        {
+          id: "active",
+          label: "Active",
+          count: activeIssues.length,
+        },
+        {
+          id: "resolved",
+          label: "Resolved",
+          count: resolvedIssues.length,
+        },
+        {
+          id: "all",
+          label: "All",
+          count: issues.length,
+        },
+      ]}
+    />
+    {visibleIssues.length === 0 ? (
+      <p className="muted">
+        No issues in this view.
+      </p>
+    ) : (
     <div className="record-grid">
-      {issues.map((issue) => (
+      {visibleIssues.map((issue) => (
         <article
           key={issue.id}
           id={`record-issue-${issue.id}`}
@@ -329,6 +382,8 @@ function IssuesPanel({
         </article>
       ))}
     </div>
+    )}
+    </>
       )}
     </div>
   );

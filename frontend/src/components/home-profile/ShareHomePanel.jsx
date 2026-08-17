@@ -1,5 +1,3 @@
-// frontend/src/components/home-profile/ShareHomePanel.jsx
-
 /**
  * Invite household members (owner only).
  */
@@ -15,54 +13,59 @@ function ShareHomePanel({
   onInvite,
   onRemove,
   isBusy,
+  readOnly = false,
 }) {
-  if (!isOwner) {
-    return null;
-  }
-
   return (
-    <section className="share-home panel-block">
-      <h4>Share this home</h4>
-      <p>
-        Invite a partner or helper by email. They
-        redeem access on next sign-in when their
-        token includes that email.
-      </p>
+    <section className="share-home">
+      <h4>Household access</h4>
+      {readOnly ? (
+        <p>
+          Sharing is disabled in the public demo.
+        </p>
+      ) : (
+        <p>
+          Owners, household members, and invited helpers
+          for this home. Invite by email — they redeem
+          access on next sign-in.
+        </p>
+      )}
 
-      <form
-        className="stack share-form"
-        onSubmit={onInvite}
-      >
-        <label>
-          Email
-          <input
-            type="email"
-            value={inviteEmail}
-            onChange={(event) =>
-              setInviteEmail(event.target.value)
-            }
-            placeholder="partner@example.com"
-            required
-          />
-        </label>
+      {isOwner && !readOnly ? (
+        <form
+          className="stack share-form"
+          onSubmit={onInvite}
+        >
+          <label>
+            Email
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(event) =>
+                setInviteEmail(event.target.value)
+              }
+              placeholder="partner@example.com"
+              required
+            />
+          </label>
 
-        <label>
-          Role
-          <select
-            value={inviteRole}
-            onChange={(event) =>
-              setInviteRole(event.target.value)
-            }
-          >
-            <option value="member">Member (can edit)</option>
-            <option value="viewer">Viewer (read + ask)</option>
-          </select>
-        </label>
+          <label>
+            Role
+            <select
+              value={inviteRole}
+              onChange={(event) =>
+                setInviteRole(event.target.value)
+              }
+            >
+              <option value="member">Member (can edit)</option>
+              <option value="viewer">Viewer (read + ask)</option>
+            </select>
+          </label>
 
-        <button type="submit" disabled={isBusy}>
-          {isBusy ? "Inviting…" : "Send invite"}
-        </button>
-      </form>
+          <button type="submit" disabled={isBusy}>
+            {isBusy ? "Inviting…" : "Send invite"}
+          </button>
+        </form>
+      ) : null}
 
       {inviteError ? (
         <p className="error-message" role="alert">
@@ -85,7 +88,7 @@ function ShareHomePanel({
                   member.member_auth0_id}{" "}
                 · {member.role}
               </span>
-              {member.role !== "owner" ? (
+              {isOwner && !readOnly && member.role !== "owner" ? (
                 <button
                   type="button"
                   className="secondary-button"
@@ -101,7 +104,11 @@ function ShareHomePanel({
             </li>
           ))}
         </ul>
-      ) : null}
+      ) : (
+        <p className="muted">
+          No household members listed yet.
+        </p>
+      )}
     </section>
   );
 }

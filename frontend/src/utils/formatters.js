@@ -81,6 +81,73 @@ export function formatMonthYear(value) {
   });
 }
 
+/**
+ * Compact date for timeline and activity rows.
+ *
+ * Examples:
+ *
+ * "2021-06-18" becomes "Jun 18"
+ * invalid / empty becomes null
+ */
+export function formatShortDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Count plus a singular/plural noun.
+ *
+ * Examples:
+ *
+ * countLabel(1, "task") becomes "1 task"
+ * countLabel(3, "event") becomes "3 events"
+ */
+export function countLabel(count, noun) {
+  const number = Number(count) || 0;
+  const label = number === 1 ? noun : `${noun}s`;
+  return `${number} ${label}`;
+}
+
+/**
+ * Built year and city/state line under a home name.
+ */
+export function homeSubtitle(home, profile) {
+  const year =
+    home?.year_built ||
+    profile?.yearBuilt ||
+    profile?.year_built;
+  const place = [
+    profile?.city,
+    profile?.state,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const parts = [];
+
+  if (year) {
+    parts.push(`Built ${year}`);
+  }
+
+  if (place) {
+    parts.push(place);
+  }
+
+  return parts.join(" · ");
+}
+
 
 /**
  * Formats a cost as US currency.
@@ -145,4 +212,44 @@ export function formatFileSize(bytes) {
     number /
     (1024 * 1024)
   ).toFixed(1)} MB`;
+}
+
+export function formatSimilarity(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return number.toFixed(2);
+}
+
+export function memorySourceLabel(memory) {
+  if (!memory || typeof memory !== "object") {
+    return "Stored memory";
+  }
+
+  const file =
+    memory.sourceFileName ||
+    memory.source_file_name ||
+    "";
+  const type =
+    memory.sourceDocumentType ||
+    memory.source_document_type ||
+    "";
+  const page =
+    memory.evidencePage ||
+    memory.evidence_page ||
+    null;
+
+  let label =
+    file ||
+    (type ? formatLabel(type) : "") ||
+    "Stored memory";
+
+  if (page) {
+    label = `${label} — p. ${page}`;
+  }
+
+  return label;
 }

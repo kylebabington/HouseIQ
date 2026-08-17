@@ -9,9 +9,28 @@ import api from "../../api.js";
 import {
   formatDate,
   formatLabel,
+  formatYear,
 } from "../../utils/formatters.js";
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
+
+function assetSectionTitle(asset) {
+  const name =
+    asset.name || formatLabel(asset.asset_type);
+  const bits = [];
+
+  if (asset.brand) {
+    bits.push(asset.brand);
+  }
+
+  const installed = formatYear(asset.install_date);
+  if (installed) {
+    bits.push(`installed ${installed}`);
+  }
+
+  return bits.length ? `${name} — ${bits.join(" · ")}` : name;
+}
 
 function assetAttentionLine(asset) {
   const type = String(
@@ -216,14 +235,18 @@ function AssetsPanel({
   }
 
   return (
-    <div className="record-grid">
+    <div className="record-stack">
       {assets.map((asset) => {
         const isEditing =
           editingAssetId === asset.id;
 
         return (
-          <article
+          <CollapsibleSection
             key={asset.id}
+            title={assetSectionTitle(asset)}
+            defaultOpen={highlightId === asset.id}
+          >
+          <article
             className={
               highlightId === asset.id
                 ? "record-card asset-card record-highlight"
@@ -519,6 +542,7 @@ function AssetsPanel({
               </small>
             </div>
           </article>
+          </CollapsibleSection>
         );
       })}
     </div>

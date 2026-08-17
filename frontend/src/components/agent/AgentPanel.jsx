@@ -8,6 +8,8 @@ import api from "../../api.js";
 
 import {
   formatLabel,
+  formatSimilarity,
+  memorySourceLabel,
 } from "../../utils/formatters.js";
 
 
@@ -126,6 +128,7 @@ function AgentPanel({
   onNavigateTab,
   askLocked = false,
   askLockReason = "",
+  hideHeader = false,
 }) {
   // -----------------------------------------------------
   // HOUSEIQ AGENT STATE
@@ -210,6 +213,10 @@ function AgentPanel({
           actionsTaken: data.actionsTaken || [],
           contextUsed: data.contextUsed || null,
           citations: data.citations || [],
+          memoriesUsed: data.memoriesUsed || [],
+          toolTrace: data.toolTrace || null,
+          model: data.model || null,
+          durationMs: data.durationMs ?? null,
         },
       ]);
 
@@ -287,6 +294,46 @@ function AgentPanel({
     );
   }
 
+  function renderMemoryInspector(memoriesUsed) {
+    if (!Array.isArray(memoriesUsed) || memoriesUsed.length === 0) {
+      return null;
+    }
+
+    return (
+      <details className="memory-inspector">
+        <summary>
+          Why HouseIQ knows this
+        </summary>
+        <p className="muted">
+          Relevant memories used — retrieved from
+          CockroachDB vector search, not invented by
+          the model.
+        </p>
+        <ol className="memory-inspector-list">
+          {memoriesUsed.map((memory) => {
+            const similarity = formatSimilarity(
+              memory.similarity
+            );
+
+            return (
+              <li key={memory.id || memory.title}>
+                <strong>
+                  {memory.title || "Memory"}
+                </strong>
+                <p className="muted">
+                  Source: {memorySourceLabel(memory)}
+                  {similarity
+                    ? ` · Similarity: ${similarity}`
+                    : ""}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
+    );
+  }
+
 
   // -----------------------------------------------------
   // PANEL
@@ -297,21 +344,23 @@ function AgentPanel({
       id="houseiq-agent-section"
       className="agent-section"
     >
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">
-            Talk naturally
-          </p>
+      {hideHeader ? null : (
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">
+              Talk naturally
+            </p>
 
-          <h3>
-            Tell HouseIQ what is happening
-          </h3>
+            <h3>
+              Tell HouseIQ what is happening
+            </h3>
+          </div>
+
+          <span className="agent-status">
+            Memory agent active
+          </span>
         </div>
-
-        <span className="agent-status">
-          Memory agent active
-        </span>
-      </div>
+      )}
 
       {askLocked ? (
         <p className="onboarding-gate-lock" role="status">
@@ -424,6 +473,8 @@ function AgentPanel({
                 {renderContextUsedSummary(
                   turn.contextUsed
                 )}
+
+                {renderMemoryInspector(turn.memoriesUsed)}
 
                 {turn.needsMoreInfo &&
                   turn.clarifyingQuestions?.length > 0 && (

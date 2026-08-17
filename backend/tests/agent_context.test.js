@@ -796,7 +796,7 @@ beforeEach(() => {
                     "from memories"
                 ) &&
                 normalizedSql.includes(
-                    "where home_id = $1"
+                    "home_id = $1"
                 ) &&
                 normalizedSql.includes(
                     "embedding is not null"

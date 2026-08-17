@@ -204,6 +204,28 @@ export function scoreAssetMatch(candidate, existing, fileName) {
         shared.reasons.push("same asset type");
     }
 
+    // Later invoices should extend the same furnace / AC / roof
+    // instead of creating a twin asset for each service year.
+    const persistentSystems = new Set([
+        "furnace",
+        "ac",
+        "water_heater",
+        "roof",
+        "basement_water",
+        "sewer",
+    ]);
+
+    if (
+        shared.candidateSystem &&
+        shared.candidateSystem === shared.existingSystem &&
+        persistentSystems.has(shared.candidateSystem)
+    ) {
+        shared.score = Math.max(shared.score, 0.72);
+        shared.reasons.push(
+            `same persistent equipment ${shared.candidateSystem}`
+        );
+    }
+
     const confidence = classifyMatchScore(shared.score);
     return {
         score: shared.score,
