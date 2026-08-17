@@ -2,20 +2,38 @@
 
 import OpenAI from "openai";
 
-// Create one reusable OpenAI client.
-//
-// The API key should already exist in backend/.env:
-//
-// OPENAI_API_KEY="your-key-here"
-//
-export const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+// Lazy client so importing this module in tests/CI does not
+// require OPENAI_API_KEY until an embedding or chat call runs.
+// Authorization suites mock services/ai/index.js; documentChunks
+// and other helpers must go through that barrel (not this file)
+// so those mocks still apply.
+let openaiClient = null;
 
-    // Prevent a hung OpenAI request from tying up a request
-    // indefinitely (and, on the agent route, holding an open
-    // database transaction while it waits).
-    timeout: 60000,
-});
+function getOpenAIClient() {
+    if (!openaiClient) {
+        openaiClient = new OpenAI({
+            apiKey:
+                process.env.OPENAI_API_KEY ||
+                "test-openai-key-not-used",
+
+            // Prevent a hung OpenAI request from tying up a request
+            // indefinitely (and, on the agent route, holding an open
+            // database transaction while it waits).
+            timeout: 60000,
+        });
+    }
+
+    return openaiClient;
+}
+
+export const openai = {
+    get embeddings() {
+        return getOpenAIClient().embeddings;
+    },
+    get chat() {
+        return getOpenAIClient().chat;
+    },
+};
 
 
 // ---------------------------------------------------------
@@ -58,7 +76,7 @@ export async function createEmbedding(text) {
         throw new Error("Cannot create an embedding from empty text");
     }
 
-    const response = await openai.embeddings.create({
+    const response = await getOpenAIClient().embeddings.create({
         model: EMBEDDING_MODEL,
         input: text.trim(),
     });
