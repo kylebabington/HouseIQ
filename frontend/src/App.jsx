@@ -28,6 +28,7 @@ import HomeProfile from "./components/home-profile/HomeProfile.jsx";
 import OnboardingGate from "./components/home-profile/OnboardingGate.jsx";
 import ShareHomePanel from "./components/home-profile/ShareHomePanel.jsx";
 import PassportPanel from "./components/home-profile/PassportPanel.jsx";
+import HomesManager from "./components/home-profile/HomesManager.jsx";
 import TimelinePanel from "./components/dashboard/TimelinePanel.jsx";
 
 import IssuesPanel from "./components/dashboard/IssuesPanel.jsx";
@@ -35,19 +36,19 @@ import ProjectsPanel from "./components/dashboard/ProjectsPanel.jsx";
 import AssetsPanel from "./components/dashboard/AssetsPanel.jsx";
 import MemoriesPanel from "./components/dashboard/MemoriesPanel.jsx";
 import DocumentsPanel from "./components/dashboard/DocumentsPanel.jsx";
-import OverviewPage from "./components/dashboard/OverviewPage.jsx";
-import YourHomesPanel from "./components/homes/YourHomesPanel.jsx";
+import ProposalsPanel from "./components/dashboard/ProposalsPanel.jsx";
+import OverviewPanel from "./components/dashboard/OverviewPanel.jsx";
+import PrimaryNav from "./components/layout/PrimaryNav.jsx";
+import SubNav from "./components/layout/SubNav.jsx";
 import CollapsibleSection from "./components/layout/CollapsibleSection.jsx";
-import WorkspaceNav from "./components/layout/WorkspaceNav.jsx";
-import {
-  HOME_TABS,
-  PRIMARY_SECTIONS,
-  RECORD_TABS,
-  destinationFromTab,
-  homeSubtitle,
-} from "./workspace/navigation.js";
 
-import { formatLabel } from "./utils/formatters.js";
+import {
+  HOME_SUBTABS,
+  RECORD_TABS,
+  locationForLegacyTab,
+} from "./navigation.js";
+
+import { formatLabel, homeSubtitle } from "./utils/formatters.js";
 
 
 // ---------------------------------------------------------
@@ -177,12 +178,12 @@ function App() {
     fetchHomeProfile,
     saveHomeProfile,
 
-    activeTab,
-    setActiveTab,
     activeSection,
     setActiveSection,
-    homeTab,
-    setHomeTab,
+    activeTab,
+    setActiveTab,
+    homeSubTab,
+    setHomeSubTab,
     isLoadingDashboard,
     dashboardError,
     refreshHomeDashboard,
@@ -227,6 +228,7 @@ function App() {
     openOriginalDocument,
     openDocumentById,
     deleteDocument,
+    renameDocument,
 
     memoryForm,
     setMemoryForm,
@@ -238,6 +240,7 @@ function App() {
     acceptProposal,
     rejectProposal,
     acceptAllProposals,
+    reviewDuplicate,
   } = useHomeDashboard({
     isAuthenticated,
     isAuthLoading,
@@ -282,11 +285,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!(
-      selectedHome?.id &&
-      (activeSection === "history" ||
-        activeSection === "overview")
-    )) {
+    if (!selectedHome?.id) {
       return undefined;
     }
 
@@ -319,7 +318,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedHome?.id, activeSection]);
+  }, [selectedHome?.id]);
 
   async function refreshDashboardForSelectedHome() {
     if (!selectedHome?.id) {
@@ -327,6 +326,49 @@ function App() {
     }
 
     await refreshHomeDashboard(selectedHome.id);
+    await refreshTimeline();
+  }
+
+
+  // -----------------------------------------------------
+  // PAGE NAVIGATION
+  // -----------------------------------------------------
+  //
+  // Six primary sections behave like pages. Records still
+  // uses activeTab; Home uses homeSubTab.
+  //
+  function applyLocation(location) {
+    if (location.section) {
+      setActiveSection(location.section);
+    }
+
+    if (location.tab) {
+      setActiveTab(location.tab);
+    }
+
+    if (location.homeSubTab) {
+      setHomeSubTab(location.homeSubTab);
+    }
+  }
+
+  function navigateToTab(tabName) {
+    applyLocation(locationForLegacyTab(tabName));
+  }
+
+  function navigateToSection(section, options = {}) {
+    setActiveSection(section);
+
+    if (section === "home" && options.homeSubTab) {
+      setHomeSubTab(options.homeSubTab);
+    }
+
+    if (options.focus) {
+      window.setTimeout(() => {
+        document
+          .getElementById("houseiq-agent-textarea")
+          ?.focus({ preventScroll: true });
+      }, 80);
+    }
   }
 
 
@@ -355,44 +397,63 @@ function App() {
     );
   }
 
+  async function seedIndianapolisRanch() {
+    try {
+      const response = await api.post(
+        "/demo/seed-indianapolis-ranch"
+      );
+      await fetchHomes();
+      if (response.data?.home) {
+        selectHome(response.data.home);
+      }
+    } catch (error) {
+      console.error("Demo seed failed:", error);
+      window.alert(
+        error.response?.data?.error ||
+          "Could not seed demo home"
+      );
+    }
+  }
+
+  function goToYourHomes() {
+    navigateToSection("home", { homeSubTab: "homes" });
+  }
+
+  function renderHomesManager() {
+    return (
+      <HomesManager
+        homes={homes}
+        selectedHome={selectedHome}
+        onSelectHome={selectHome}
+        homeForm={homeForm}
+        setHomeForm={setHomeForm}
+        onCreateHome={createHome}
+        createHomeError={createHomeError}
+        homesError={homesError}
+        onDeleteHome={deleteHome}
+        isHomeOwner={isHomeOwner}
+        onSeedDemo={seedIndianapolisRanch}
+        profile={homeProfile}
+      />
+    );
+  }
+
 
   // -----------------------------------------------------
   // CHOOSE WHICH TAB CONTENT TO DISPLAY
   // -----------------------------------------------------
 
-  function navigateTo(section, extras = {}) {
-    setActiveSection(section);
-
-    if (extras.tab) {
-      setActiveTab(extras.tab);
-    }
-
-    if (extras.homeTab) {
-      setHomeTab(extras.homeTab);
-    }
-  }
-
-  function navigateFromLegacyTab(tabName) {
-    const destination = destinationFromTab(tabName);
-    setActiveSection(destination.section);
-    setActiveTab(destination.tab);
-    setHomeTab(destination.homeTab);
-  }
-
   function handleSelectNeed(item) {
-    if (item.kind === "seasonal") {
-      navigateTo("history");
-      return;
-    }
-
     const tabByKind = {
       issue: "issues",
       project: "projects",
       lifecycle: "assets",
       asset: "assets",
+      seasonal: "profile",
     };
 
-    navigateFromLegacyTab(tabByKind[item.kind] || "issues");
+    const tab = tabByKind[item.kind] || "issues";
+    navigateToTab(tab);
     setHighlightRecord({
       kind: item.kind,
       id: item.id,
@@ -462,17 +523,12 @@ function App() {
               }
             />
             {import.meta.env.DEV ? (
-              <CollapsibleSection
-                title="Add a memory — manual testing"
-                defaultOpen={false}
-              >
-                <ManualMemoryPanel
-                  memoryForm={memoryForm}
-                  setMemoryForm={setMemoryForm}
-                  createMemory={createMemory}
-                  memoryFormError={memoryFormError}
-                />
-              </CollapsibleSection>
+              <ManualMemoryPanel
+                memoryForm={memoryForm}
+                setMemoryForm={setMemoryForm}
+                createMemory={createMemory}
+                memoryFormError={memoryFormError}
+              />
             ) : null}
           </>
         );
@@ -497,58 +553,12 @@ function App() {
     }
   }
 
-  function renderYourHomes() {
-    return (
-      <CollapsibleSection
-        title={`Your Homes — ${homes.length} propert${
-          homes.length === 1 ? "y" : "ies"
-        }`}
-        defaultOpen
-      >
-        <YourHomesPanel
-          homes={homes}
-          selectedHome={selectedHome}
-          homesError={homesError}
-          homeForm={homeForm}
-          setHomeForm={setHomeForm}
-          onSelectHome={selectHome}
-          onCreateHome={createHome}
-          createHomeError={createHomeError}
-          onDeleteHome={deleteHome}
-          canCreate
-          canDelete={isHomeOwner}
-        />
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={async () => {
-            try {
-              const response = await api.post(
-                "/demo/seed-indianapolis-ranch"
-              );
-              await fetchHomes();
-              if (response.data?.home) {
-                selectHome(response.data.home);
-              }
-            } catch (error) {
-              console.error("Demo seed failed:", error);
-              window.alert(
-                error.response?.data?.error ||
-                  "Could not seed demo home"
-              );
-            }
-          }}
-        >
-          Seed Indianapolis Ranch
-        </button>
-      </CollapsibleSection>
-    );
-  }
-
-  function renderHomeTab() {
-    switch (homeTab) {
+  function renderHomeSubTab() {
+    switch (homeSubTab) {
       case "passport":
-        return <PassportPanel homeId={selectedHome?.id} />;
+        return (
+          <PassportPanel homeId={selectedHome?.id} />
+        );
 
       case "sharing":
         return (
@@ -568,7 +578,7 @@ function App() {
         );
 
       case "homes":
-        return renderYourHomes();
+        return renderHomesManager();
 
       case "profile":
       default:
@@ -576,87 +586,63 @@ function App() {
     }
   }
 
-  function renderSection() {
+  function renderActiveSection() {
     switch (activeSection) {
       case "ask":
-        return (
-          <div className="workspace-page">
-      <CollapsibleSection
-        title="Ask HouseIQ — Ask about repairs, systems, or documents"
-        defaultOpen
-        priority
-      >
-              <AgentPanel
-                selectedHome={selectedHome}
-                askLocked={!askUnlocked}
-                askLockReason={askLockReason}
-                hideHeader
-                onRecordsChanged={() =>
-                  refreshHomeDashboard(selectedHome.id)
-                }
-                onNavigateTab={navigateFromLegacyTab}
-              />
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              title={
-                agentRuns?.length
-                  ? `Agent Run Inspector — ${agentRuns.length} run${
-                      agentRuns.length === 1 ? "" : "s"
-                    }`
-                  : "Agent Run Inspector — no runs yet"
-              }
-              defaultOpen={false}
-            >
-              <AdviceHistoryPanel
-                runs={agentRuns}
-                isLoading={isLoadingAgentRuns}
-                error={agentRunsError}
-                hideHeader
-              />
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              title="Memory Auditor — CockroachDB Cloud MCP"
-              defaultOpen={false}
-            >
-              <MemoryAuditorPanel selectedHome={selectedHome} />
-            </CollapsibleSection>
-          </div>
-        );
+        return null;
 
       case "documents":
         return (
-          <div className="workspace-page">
+          <div className="documents-section panel-enter">
+            <CollapsibleSection
+              title="Upload a Document"
+              summary="Inspection, invoice, warranty, or manual"
+              defaultOpen
+              openOnMobile
+            >
+            <DocumentUploadPanel
+              hideHeading
+              selectedDocumentType={
+                selectedDocumentType
+              }
+              setSelectedDocumentType={
+                setSelectedDocumentType
+              }
+              selectedDocumentFile={
+                selectedDocumentFile
+              }
+              setSelectedDocumentFile={
+                setSelectedDocumentFile
+              }
+              isUploadingDocument={
+                isUploadingDocument
+              }
+              documentUploadError={
+                documentUploadError
+              }
+              setDocumentUploadError={
+                setDocumentUploadError
+              }
+              documentUploadResult={
+                documentUploadResult
+              }
+              setDocumentUploadResult={
+                setDocumentUploadResult
+              }
+              uploadDocument={uploadDocument}
+            />
             {documentOpenError ? (
               <p className="error-message" role="alert">
                 {documentOpenError}
               </p>
             ) : null}
-            <CollapsibleSection
-              title="Upload a Document — Inspection, invoice, warranty, or manual"
-              defaultOpen
-              priority
-            >
-              <DocumentUploadPanel
-                selectedDocumentType={selectedDocumentType}
-                setSelectedDocumentType={setSelectedDocumentType}
-                selectedDocumentFile={selectedDocumentFile}
-                setSelectedDocumentFile={setSelectedDocumentFile}
-                isUploadingDocument={isUploadingDocument}
-                documentUploadError={documentUploadError}
-                setDocumentUploadError={setDocumentUploadError}
-                documentUploadResult={documentUploadResult}
-                setDocumentUploadResult={setDocumentUploadResult}
-                uploadDocument={uploadDocument}
-                hideHeader
-              />
             </CollapsibleSection>
             <DocumentsPanel
               documents={documents}
               openOriginalDocument={openOriginalDocument}
               onDeleteDocument={deleteDocument}
-              canDelete={
+              onRenameDocument={renameDocument}
+              canEdit={
                 isHomeOwner ||
                 selectedHome?.member_role === "member"
               }
@@ -666,103 +652,142 @@ function App() {
 
       case "records":
         return (
-          <div className="workspace-page">
-            <WorkspaceNav
-              items={RECORD_TABS}
-              value={
-                RECORD_TABS.some((tab) => tab.id === activeTab)
-                  ? activeTab
-                  : "issues"
-              }
-              onChange={setActiveTab}
-              ariaLabel="Home records"
-              variant="sub"
-              counts={{
-                issues: issues.length,
-                projects: projects.length,
-                assets: assets.length,
-                memories: memories.length,
-              }}
-            />
-            {dashboardError ? (
-              <div className="error-message">
-                <strong>Dashboard error</strong>
-                <p>{dashboardError}</p>
+          <section className="dashboard-section panel-enter">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  Long-term memory
+                </p>
+                <h3>Home records</h3>
               </div>
-            ) : null}
+            </div>
+
+            <SubNav
+              label="Home records"
+              idPrefix="tab"
+              panelId="dashboard-tabpanel"
+              activeId={activeTab}
+              onSelect={setActiveTab}
+              items={RECORD_TABS.map((tab) => ({
+                ...tab,
+                count: {
+                  issues: issues.length,
+                  projects: projects.length,
+                  assets: assets.length,
+                  memories: memories.length,
+                }[tab.id],
+              }))}
+            />
+
+            {dashboardError && (
+              <div className="error-message">
+                <strong>
+                  Dashboard
+                  error
+                </strong>
+
+                <p>
+                  {dashboardError}
+                </p>
+              </div>
+            )}
+
             <div
               key={activeTab}
+              id="dashboard-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`tab-${activeTab}`}
               className="tab-content"
             >
               {isLoadingDashboard ? (
                 <div className="loading-state">
-                  Loading home records...
+                  Loading home
+                  records...
                 </div>
               ) : (
                 renderRecordsTab()
               )}
             </div>
-          </div>
+          </section>
         );
 
       case "history":
         return (
-          <CollapsibleSection
-            title={
-              timelineEvents.length
-                ? `Home Timeline — ${timelineEvents.length} recorded event${
-                    timelineEvents.length === 1 ? "" : "s"
-                  }`
-                : "Home Timeline — no events yet"
-            }
-            defaultOpen
-          >
+          <div className="panel-enter">
             <TimelinePanel
               events={timelineEvents}
+              documents={documents}
               isLoading={isLoadingTimeline}
               error={timelineError}
               onRefresh={refreshTimeline}
             />
-          </CollapsibleSection>
+          </div>
         );
 
       case "home":
         return (
-          <div className="workspace-page">
-            <WorkspaceNav
-              items={HOME_TABS}
-              value={homeTab}
-              onChange={setHomeTab}
-              ariaLabel="Home settings"
-              variant="sub"
-            />
-            <div key={homeTab} className="tab-content">
-              {renderHomeTab()}
+          <section className="dashboard-section panel-enter">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  This property
+                </p>
+                <h3>Home</h3>
+              </div>
             </div>
-          </div>
+
+            <SubNav
+              label="Home settings"
+              idPrefix="home-tab"
+              panelId="home-tabpanel"
+              activeId={homeSubTab}
+              onSelect={setHomeSubTab}
+              items={HOME_SUBTABS}
+            />
+
+            <div
+              key={homeSubTab}
+              id="home-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`home-tab-${homeSubTab}`}
+              className="tab-content"
+            >
+              {renderHomeSubTab()}
+            </div>
+          </section>
         );
 
       case "overview":
       default:
         return (
-          <OverviewPage
+          <OverviewPanel
+            counts={{
+              issues: issues.length,
+              projects: projects.length,
+              assets: assets.length,
+              memories: memories.length,
+              documents: documents.length,
+            }}
             needsItems={needsItems}
             isLoadingNeeds={isLoadingNeeds}
             needsError={needsError}
             onSelectNeed={handleSelectNeed}
-            timelineEvents={timelineEvents}
-            proposals={proposals}
-            isUpdatingProposal={isUpdatingProposal}
-            onAcceptProposal={acceptProposal}
-            onRejectProposal={rejectProposal}
-            onAcceptAllProposals={acceptAllProposals}
-            onNavigate={(section) => {
-              if (section === "documents") {
-                navigateTo("documents");
-                return;
-              }
-              navigateTo(section);
-            }}
+            recentEvents={timelineEvents.slice(0, 6)}
+            proposalsTotal={proposals?.total || 0}
+            onNavigate={navigateToSection}
+            proposalsSlot={
+              (proposals?.total || 0) > 0 ? (
+                <ProposalsPanel
+                  proposals={proposals}
+                  isBusy={isUpdatingProposal}
+                  onAccept={acceptProposal}
+                  onReject={rejectProposal}
+                  onAcceptAll={acceptAllProposals}
+                  onReviewDuplicate={reviewDuplicate}
+                  hideHeader
+                />
+              ) : null
+            }
           />
         );
     }
@@ -803,10 +828,6 @@ function App() {
 
       <header className="app-topbar">
         <div className="brand-lockup">
-          <p className="topbar-eyebrow">
-            Agentic home memory
-          </p>
-
           <p className="brand-wordmark">
             HouseIQ
           </p>
@@ -853,107 +874,126 @@ function App() {
         </div>
       </header>
 
-      <div className="workspace-chrome">
-        {selectedHome ? (
-          <header className="workspace-home-banner">
-            <div>
-              <h1>{selectedHome.name}</h1>
-              <p className="workspace-home-meta">
-                {homeSubtitle(selectedHome, homeProfile) ||
-                  selectedHome.notes ||
-                  "Current home"}
-              </p>
-              {homeProfile ? (
-                <span
-                  className={`onboarding-badge ${
-                    ONBOARDING_STATUS_META[
-                      homeProfile.onboardingStatus
-                    ]?.className || "onboarding-not_started"
-                  }`}
-                >
-                  {ONBOARDING_STATUS_META[
-                    homeProfile.onboardingStatus
-                  ]?.label ||
-                    formatLabel(homeProfile.onboardingStatus)}
-                </span>
-              ) : null}
-            </div>
-
-            <div className="workspace-home-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  navigateTo("home", { homeTab: "homes" })
-                }
-              >
-                Switch home
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  refreshHomeDashboard(selectedHome.id);
-                  fetchHomeProfile(selectedHome.id);
-                }}
-                disabled={
-                  isLoadingDashboard || isLoadingHomeProfile
-                }
-              >
-                {isLoadingDashboard || isLoadingHomeProfile
-                  ? "Refreshing..."
-                  : "Refresh Home"}
-              </button>
-            </div>
-          </header>
-        ) : (
-          <header className="workspace-home-banner">
-            <div>
-              <h1>Your homes</h1>
-              <p className="workspace-home-meta">
-                Create or select a home to open the workspace.
-              </p>
-            </div>
-          </header>
-        )}
-
-        <WorkspaceNav
-          items={PRIMARY_SECTIONS}
-          value={activeSection}
-          onChange={(section) => {
-            if (!selectedHome && section !== "home") {
-              navigateTo("home", { homeTab: "homes" });
-              return;
-            }
-            navigateTo(section);
-          }}
-          ariaLabel="HouseIQ sections"
-        />
-      </div>
-
       <div className="workspace">
-        <div className="workspace-inner">
-          {selectedHome ? (
-            <>
-              {showOnboardingGate ? (
-                <OnboardingGate
-                  homeId={selectedHome.id}
-                  homeProfile={homeProfile}
-                  onProfileSaved={async () => {
-                    await fetchHomeProfile(selectedHome.id);
-                    await refreshHomeDashboard(selectedHome.id);
+        {selectedHome ? (
+          <>
+            {showOnboardingGate ? (
+              <OnboardingGate
+                homeId={selectedHome.id}
+                homeProfile={homeProfile}
+                onProfileSaved={async () => {
+                  await fetchHomeProfile(
+                    selectedHome.id
+                  );
+                  await refreshHomeDashboard(
+                    selectedHome.id
+                  );
+                }}
+                onSkip={() =>
+                  setOnboardingGateDismissed(true)
+                }
+                askUnlocked={askUnlocked}
+                askLockReason={askLockReason}
+              />
+            ) : null}
+
+            <header className="workspace-homebar">
+              <div>
+                <h1>{selectedHome.name}</h1>
+                {homeSubtitle(selectedHome, homeProfile) ? (
+                  <p>
+                    {homeSubtitle(
+                      selectedHome,
+                      homeProfile
+                    )}
+                  </p>
+                ) : null}
+                {homeProfile ? (
+                  <span
+                    className={`onboarding-badge ${ONBOARDING_STATUS_META[
+                      homeProfile.onboardingStatus
+                    ]?.className ||
+                      "onboarding-not_started"}`}
+                  >
+                    {ONBOARDING_STATUS_META[
+                      homeProfile.onboardingStatus
+                    ]?.label ||
+                      formatLabel(
+                        homeProfile.onboardingStatus
+                      )}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="workspace-homebar-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    refreshHomeDashboard(
+                      selectedHome.id
+                    );
+                    fetchHomeProfile(
+                      selectedHome.id
+                    );
                   }}
-                  onSkip={() => setOnboardingGateDismissed(true)}
-                  askUnlocked={askUnlocked}
-                  askLockReason={askLockReason}
-                />
-              ) : null}
-              {renderSection()}
-            </>
-          ) : (
-            renderYourHomes()
-          )}
-        </div>
+                  disabled={
+                    isLoadingDashboard ||
+                    isLoadingHomeProfile
+                  }
+                >
+                  {isLoadingDashboard ||
+                    isLoadingHomeProfile
+                    ? "Refreshing..."
+                    : "Refresh Home"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={goToYourHomes}
+                >
+                  Switch home
+                </button>
+              </div>
+            </header>
+
+            <PrimaryNav
+              activeSection={activeSection}
+              onSelect={setActiveSection}
+            />
+
+            <div
+              hidden={activeSection !== "ask"}
+              className="ask-page panel-enter"
+            >
+              <AgentPanel
+                key={selectedHome?.id || "no-home"}
+                selectedHome={selectedHome}
+                askLocked={!askUnlocked}
+                askLockReason={askLockReason}
+                agentRuns={agentRuns}
+                onRecordsChanged={() =>
+                  refreshHomeDashboard(
+                    selectedHome.id
+                  )
+                }
+                onNavigateTab={navigateToTab}
+              />
+              <AdviceHistoryPanel
+                runs={agentRuns}
+                isLoading={isLoadingAgentRuns}
+                error={agentRunsError}
+              />
+              <MemoryAuditorPanel selectedHome={selectedHome} />
+            </div>
+
+            {activeSection === "ask"
+              ? null
+              : renderActiveSection()}
+          </>
+        ) : (
+          renderHomesManager()
+        )}
       </div>
     </main>
   );

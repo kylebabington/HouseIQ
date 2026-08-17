@@ -13,7 +13,6 @@ import {
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
 import CollapsibleSection from "../layout/CollapsibleSection.jsx";
-import FilterChips from "../layout/FilterChips.jsx";
 
 
 // ---------------------------------------------------------
@@ -47,6 +46,9 @@ function IssuesPanel({
   const [issueErrors, setIssueErrors] =
     useState({});
 
+  const [statusFilter, setStatusFilter] =
+    useState("all");
+
   const [createForm, setCreateForm] = useState({
     title: "",
     description: "",
@@ -58,8 +60,6 @@ function IssuesPanel({
     useState("");
   const [isCreating, setIsCreating] =
     useState(false);
-  const [statusFilter, setStatusFilter] =
-    useState("active");
   async function handleStatusChange(
     issue,
     newStatus
@@ -144,33 +144,27 @@ function IssuesPanel({
     }
   }
 
-  const activeIssues = issues.filter(
-    (issue) =>
-      issue.status === "open" ||
-      issue.status === "in_progress"
-  );
-  const resolvedIssues = issues.filter(
-    (issue) =>
-      issue.status === "resolved" ||
-      issue.status === "closed"
-  );
-  const visibleIssues =
-    statusFilter === "active"
-      ? activeIssues
-      : statusFilter === "resolved"
-        ? resolvedIssues
-        : issues;
+  const visibleIssues = issues.filter((issue) => {
+    const status = issue.status || "open";
+
+    if (statusFilter === "active") {
+      return status === "open" || status === "in_progress";
+    }
+
+    if (statusFilter === "resolved") {
+      return status === "resolved" || status === "closed";
+    }
+
+    return true;
+  });
 
   return (
     <div className="issues-panel-wrap">
-      <CollapsibleSection
-        title="Add an issue — log a leak, malfunction, or concern"
-        defaultOpen={false}
-      >
       <form
         className="stack manual-create-form"
         onSubmit={createIssue}
       >
+        <h4>Add an issue manually</h4>
         <input
           value={createForm.title}
           onChange={(event) =>
@@ -214,7 +208,6 @@ function IssuesPanel({
           </p>
         ) : null}
       </form>
-      </CollapsibleSection>
 
       {issues.length === 0 ? (
         <div className="empty-state dashboard-empty">
@@ -226,64 +219,49 @@ function IssuesPanel({
           </p>
         </div>
       ) : (
-    <>
-    <FilterChips
-      ariaLabel="Issue status"
-      value={statusFilter}
-      onChange={setStatusFilter}
-      options={[
-        {
-          id: "active",
-          label: "Active",
-          count: activeIssues.length,
-        },
-        {
-          id: "resolved",
-          label: "Resolved",
-          count: resolvedIssues.length,
-        },
-        {
-          id: "all",
-          label: "All",
-          count: issues.length,
-        },
-      ]}
-    />
-    {visibleIssues.length === 0 ? (
-      <p className="muted">
-        No issues in this view.
-      </p>
-    ) : (
-    <div className="record-grid">
+        <>
+          <div
+            className="tab-list"
+            role="tablist"
+            aria-label="Issue status"
+          >
+            {[
+              ["active", "Active"],
+              ["resolved", "Resolved"],
+              ["all", "All"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === id}
+                className={
+                  statusFilter === id
+                    ? "tab-button active"
+                    : "tab-button"
+                }
+                onClick={() => setStatusFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {visibleIssues.length === 0 ? (
+            <div className="empty-state dashboard-empty">
+              <h4>No {statusFilter} issues</h4>
+            </div>
+          ) : (
+    <div className="record-stack">
       {visibleIssues.map((issue) => (
-        <article
+        <CollapsibleSection
           key={issue.id}
           id={`record-issue-${issue.id}`}
-          className={
-            highlightId === issue.id
-              ? "record-card issue-card record-highlight"
-              : "record-card issue-card"
-          }
+          variant="row"
+          title={issue.title}
+          summary={`${formatLabel(issue.priority)} priority · ${formatLabel(issue.status || "open")}`}
+          defaultOpen={highlightId === issue.id}
         >
-          <div className="record-card-header">
-            <div>
-              <span className="record-type">
-                {formatLabel(
-                  issue.category
-                )}
-              </span>
-
-              <h4>{issue.title}</h4>
-            </div>
-
-            <span
-              className={`priority-badge priority-${issue.priority}`}
-            >
-              {formatLabel(
-                issue.priority
-              )}
-            </span>
-          </div>
 
           <ProvenanceLine
             sourceFileName={
@@ -301,6 +279,7 @@ function IssuesPanel({
             evidencePage={
               issue.evidence_page
             }
+            evidenceSources={issue.evidence}
             onOpenDocument={onOpenDocument}
           />
 
@@ -379,11 +358,11 @@ function IssuesPanel({
               {issueErrors[issue.id]}
             </p>
           )}
-        </article>
+        </CollapsibleSection>
       ))}
     </div>
-    )}
-    </>
+          )}
+        </>
       )}
     </div>
   );

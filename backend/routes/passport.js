@@ -147,7 +147,7 @@ export function createPassportRouter() {
                 if (sections.has("documents")) {
                     const result = await pool.query(
                         `
-                        SELECT id, document_type, file_name, summary, created_at
+                        SELECT id, document_type, file_name, summary, metadata, created_at
                         FROM documents
                         WHERE home_id = $1
                         ORDER BY created_at DESC
@@ -202,7 +202,12 @@ export function createPassportRouter() {
                 ] = await Promise.all([
                     pool.query(
                         `
-                        SELECT id, file_name AS title, document_type AS kind,
+                        SELECT id,
+                               COALESCE(
+                                 NULLIF(TRIM(metadata->>'displayTitle'), ''),
+                                 file_name
+                               ) AS title,
+                               document_type AS kind,
                                created_at AS occurred_at, 'document' AS source
                         FROM documents WHERE home_id = $1
                         `,

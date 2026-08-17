@@ -1,65 +1,91 @@
+// frontend/src/components/layout/CollapsibleSection.jsx
+
 import {
-  useId,
   useState,
 } from "react";
 
+function initialOpen(defaultOpen, openOnMobile) {
+  if (typeof window === "undefined") {
+    return defaultOpen;
+  }
+
+  const narrow = window.matchMedia(
+    "(max-width: 820px)"
+  ).matches;
+
+  return narrow ? openOnMobile : defaultOpen;
+}
+
 /**
- * Large HouseIQ sections collapse behind a title that already
- * carries the useful summary, e.g.
- * "Needs Attention — 3 urgent · 4 upcoming".
+ * Large-section accordion. The header is the whole click
+ * target and must include a useful summary so it does not
+ * need to be opened just to see what it is.
  *
- * Click the entire header. Remember open/closed while this
- * instance stays mounted (i.e. while the user stays on the page).
+ * Title format: "Thing name — most useful status/summary"
  */
 function CollapsibleSection({
   title,
+  summary,
   defaultOpen = false,
-  priority = false,
-  children,
-  className = "",
+  openOnMobile = false,
+  forceOpen = false,
+  nested = false,
+  variant = "block",
   id,
+  headerActions,
+  children,
 }) {
-  const [open, setOpen] = useState(() => {
-    if (priority) {
-      return defaultOpen;
-    }
+  const [open, setOpen] = useState(() =>
+    forceOpen || initialOpen(defaultOpen, openOnMobile)
+  );
 
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(max-width: 700px)").matches
-    ) {
-      return false;
-    }
-
-    return defaultOpen;
-  });
-  const reactId = useId();
-  const bodyId = id ? `${id}-body` : `${reactId}-body`;
+  const isOpen = forceOpen || open;
 
   return (
     <section
-      className={
-        `collapsible-section${open ? " is-open" : ""} ${className}`.trim()
-      }
       id={id}
+      className={[
+        "collapse-section",
+        `collapse-${variant}`,
+        nested ? "collapse-nested" : "",
+        isOpen ? "open" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      <button
-        type="button"
-        className="collapsible-header"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className="collapsible-chevron" aria-hidden="true">
-          {open ? "▼" : "▶"}
-        </span>
-        <span className="collapsible-title">
-          {title}
-        </span>
-      </button>
+      <div className="collapse-header-row">
+        <button
+          type="button"
+          className="collapse-header"
+          aria-expanded={isOpen}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <span className="collapse-chevron" aria-hidden="true">
+            {isOpen ? "▼" : "▶"}
+          </span>
+          <span className="collapse-title">
+            <strong>{title}</strong>
+            {summary ? (
+              <span className="collapse-summary">
+                {" "}
+                — {summary}
+              </span>
+            ) : null}
+          </span>
+        </button>
 
-      {open ? (
-        <div className="collapsible-body" id={bodyId}>
+        {headerActions ? (
+          <div
+            className="collapse-header-actions"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {headerActions}
+          </div>
+        ) : null}
+      </div>
+
+      {isOpen ? (
+        <div className="collapse-body">
           {children}
         </div>
       ) : null}

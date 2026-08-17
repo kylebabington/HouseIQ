@@ -1,65 +1,81 @@
-import { formatCurrency } from "../../utils/formatters.js";
+// frontend/src/components/dashboard/TimelinePanel.jsx
+
+import {
+  countLabel,
+  formatCurrency,
+  formatLabel,
+  formatShortDate,
+} from "../../utils/formatters.js";
 import { groupByYear } from "../../utils/groupByYear.js";
 import CollapsibleSection from "../layout/CollapsibleSection.jsx";
 
-function eventWhen(event) {
-  if (!event.occurred_at) {
+function eventDetail(event, documentsById) {
+  if (event.source !== "document") {
     return null;
   }
 
-  return new Date(event.occurred_at).toLocaleDateString(
-    "en-US",
-    { month: "short", day: "numeric" }
-  );
-}
+  const documentRecord = documentsById.get(event.id);
 
-function eventMeta(event) {
+  if (!documentRecord) {
+    return null;
+  }
+
+  const amount =
+    documentRecord.metadata?.totalAmount ||
+    documentRecord.total_amount;
+  const company =
+    documentRecord.metadata?.contractorOrCompany ||
+    documentRecord.contractor_or_company;
+
   const parts = [];
 
-  if (event.amount) {
-    parts.push(formatCurrency(event.amount));
+  if (Number(amount) > 0) {
+    parts.push(formatCurrency(amount));
   }
 
-  if (event.contractor || event.company) {
-    parts.push(event.contractor || event.company);
+  if (company) {
+    parts.push(company);
   }
 
-  if (event.source) {
-    parts.push(event.source);
-  }
-
-  if (event.kind) {
-    parts.push(event.kind);
-  }
-
-  return parts.join(" · ");
+  return parts.join(" · ") || null;
 }
 
 export default function TimelinePanel({
   events = [],
+  documents = [],
   isLoading = false,
   error = "",
   onRefresh,
 }) {
-  const groups = groupByYear(
+  const documentsById = new Map(
+    documents.map((documentRecord) => [
+      documentRecord.id,
+      documentRecord,
+    ])
+  );
+
+  const yearGroups = groupByYear(
     events,
-    (event) => event.occurred_at || event.created_at
+    (event) => event.occurred_at
   );
 
   return (
-    <div className="timeline-page">
-      {typeof onRefresh === "function" ? (
-        <div className="page-toolbar">
+    <CollapsibleSection
+      title="Home Timeline"
+      summary={countLabel(events.length, "recorded event")}
+      defaultOpen
+      headerActions={
+        typeof onRefresh === "function" ? (
           <button
             type="button"
             className="secondary-button"
             onClick={onRefresh}
           >
-            Refresh timeline
+            Refresh
           </button>
-        </div>
-      ) : null}
-
+        ) : null
+      }
+    >
       {isLoading && <p>Loading timeline…</p>}
       {error && <p className="error-message">{error}</p>}
 
@@ -70,40 +86,55 @@ export default function TimelinePanel({
         </p>
       )}
 
-      <div className="year-stack timeline-year-stack">
-        {groups.map((group, index) => (
-          <CollapsibleSection
-            key={group.year}
-            title={`${group.year} — ${group.items.length} event${
-              group.items.length === 1 ? "" : "s"
-            }`}
-            defaultOpen={index === 0}
-          >
-            <ul className="home-history-list">
-              {group.items.map((event) => {
-                const when = eventWhen(event);
-                const meta = eventMeta(event);
+      {yearGroups.map(([year, yearEvents]) => (
+        <CollapsibleSection
+          key={year}
+          nested
+          variant="row"
+          title={String(year)}
+          summary={countLabel(yearEvents.length, "event")}
+        >
+          <ol className="history-tree">
+            {yearEvents.map((event) => {
+              const detail = eventDetail(
+                event,
+                documentsById
+              );
 
-                return (
-                  <li key={`${event.source}-${event.id}`}>
+              return (
+                <li
+                  key={`${event.source}-${event.id}`}
+                >
+                  <time>
+                    {formatShortDate(event.occurred_at) ||
+                      "Undated"}
+                  </time>
+                  <div>
                     <strong>
-                      {when
-                        ? `${when} — ${event.title || "Untitled event"}`
-                        : event.title || "Untitled event"}
+                      {event.title || "Untitled event"}
                     </strong>
-                    {meta ? <div>{meta}</div> : null}
-                    {event.evidence_passage ? (
+                    {detail ? (
+                      <span>{detail}</span>
+                    ) : event.kind ? (
+                      <span>
+                        {formatLabel(event.source)}
+                        {event.kind
+                          ? ` · ${formatLabel(event.kind)}`
+                          : ""}
+                      </span>
+                    ) : null}
+                    {event.evidence_passage && (
                       <p className="evidence-quote">
                         &ldquo;{event.evidence_passage}&rdquo;
                       </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </CollapsibleSection>
-        ))}
-      </div>
-    </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </CollapsibleSection>
+      ))}
+    </CollapsibleSection>
   );
 }

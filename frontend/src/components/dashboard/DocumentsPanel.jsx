@@ -1,22 +1,28 @@
 // frontend/src/components/dashboard/DocumentsPanel.jsx
 
 import {
-  useMemo,
-  useState,
-} from "react";
-
-import {
+  countLabel,
+  documentDisplayTitle,
   formatCurrency,
   formatDate,
   formatFileSize,
   formatLabel,
 } from "../../utils/formatters.js";
 import { groupByYear } from "../../utils/groupByYear.js";
-import {
-  DOCUMENT_TYPE_FILTERS,
-} from "../../workspace/navigation.js";
 import CollapsibleSection from "../layout/CollapsibleSection.jsx";
-import FilterChips from "../layout/FilterChips.jsx";
+
+import {
+  useMemo,
+  useState,
+} from "react";
+
+const TYPE_FILTERS = [
+  { id: "all", label: "All", types: null },
+  { id: "inspection", label: "Inspections", types: ["inspection"] },
+  { id: "invoice", label: "Invoices", types: ["invoice", "receipt", "estimate"] },
+  { id: "manual", label: "Manuals", types: ["manual"] },
+  { id: "warranty", label: "Warranties", types: ["warranty"] },
+];
 
 function documentDate(documentRecord) {
   return (
@@ -40,139 +46,238 @@ function documentAmount(documentRecord) {
   );
 }
 
-function documentTitle(documentRecord) {
-  const meta = documentRecord.metadata || {};
-
-  if (meta.title) {
-    return meta.title;
-  }
-
-  const type = formatLabel(
-    documentRecord.document_type || "document"
-  );
-  const company = documentCompany(documentRecord);
-
-  if (company) {
-    return `${type} · ${company}`;
-  }
-
-  const fileName = documentRecord.file_name || "Document";
-  return fileName
-    .replace(/^\d+__/, "")
-    .replace(/_/g, " ")
-    .replace(/\.pdf$/i, "");
-}
-
-function matchesTypeFilter(documentRecord, typeFilter) {
-  if (typeFilter === "all") {
-    return true;
-  }
-
-  return (
-    String(documentRecord.document_type || "general") ===
-    typeFilter
-  );
-}
-
 function DocumentCard({
   documentRecord,
   openOriginalDocument,
   onDeleteDocument,
-  canDelete,
+  onRenameDocument,
+  canEdit,
+  deletingId,
   pendingDeleteId,
   setPendingDeleteId,
-  deletingId,
   confirmDelete,
+  editingTitleId,
+  titleDraft,
+  setTitleDraft,
+  setEditingTitleId,
+  savingTitleId,
+  titleError,
+  onSaveTitle,
 }) {
   const metadata = documentRecord.metadata || {};
-  const amount = documentAmount(documentRecord);
   const company = documentCompany(documentRecord);
+  const amount = documentAmount(documentRecord);
+  const dated = documentDate(documentRecord);
+  const displayTitle = documentDisplayTitle(documentRecord);
+  const originalName = documentRecord.file_name;
+  const isEditingTitle = editingTitleId === documentRecord.id;
 
   return (
-    <article className="record-card document-card">
+    <article
+      className="record-card document-card"
+    >
       <div className="record-card-header">
         <div>
           <span className="record-type">
-            {formatLabel(documentRecord.document_type)}
+            {formatLabel(
+              documentRecord.document_type
+            )}
           </span>
-          <h4>{documentTitle(documentRecord)}</h4>
+
+          {isEditingTitle ? (
+            <form
+              className="document-title-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onSaveTitle(documentRecord);
+              }}
+            >
+              <input
+                type="text"
+                value={titleDraft}
+                onChange={(event) =>
+                  setTitleDraft(event.target.value)
+                }
+                aria-label="Document title"
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={
+                  savingTitleId === documentRecord.id
+                }
+              >
+                {savingTitleId === documentRecord.id
+                  ? "Saving…"
+                  : "Save"}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setEditingTitleId(null)}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <>
+              <h4>{displayTitle}</h4>
+              {originalName &&
+              originalName !== displayTitle ? (
+                <p className="document-original-name">
+                  Original file: {originalName}
+                </p>
+              ) : null}
+            </>
+          )}
+          {titleError &&
+          editingTitleId === documentRecord.id ? (
+            <p className="error-message" role="alert">
+              {titleError}
+            </p>
+          ) : null}
         </div>
+
+        <span className="document-icon">
+          DOC
+        </span>
       </div>
 
       {documentRecord.summary ? (
         <p className="record-description">
           {documentRecord.summary}
         </p>
-      ) : null}
+      ) : (
+        <p className="empty-state">
+          No summary is available.
+        </p>
+      )}
 
       <div className="document-details">
-        {documentDate(documentRecord) ? (
+        {dated && (
           <div>
-            <span>Document date</span>
+            <span>
+              Document date
+            </span>
+
             <strong>
-              {formatDate(documentDate(documentRecord))}
+              {documentRecord.metadata?.documentDate ||
+                formatDate(dated)}
             </strong>
           </div>
-        ) : null}
+        )}
 
-        {company ? (
+        {company && (
           <div>
-            <span>Company</span>
-            <strong>{company}</strong>
-          </div>
-        ) : null}
+            <span>
+              Company
+            </span>
 
-        {Number(amount) > 0 ? (
-          <div>
-            <span>Total amount</span>
-            <strong>{formatCurrency(amount)}</strong>
+            <strong>
+              {company}
+            </strong>
           </div>
-        ) : null}
+        )}
 
-        {metadata.fileSize ? (
+        {Number(amount) > 0 && (
           <div>
-            <span>File size</span>
-            <strong>{formatFileSize(metadata.fileSize)}</strong>
+            <span>
+              Total amount
+            </span>
+
+            <strong>
+              {formatCurrency(amount)}
+            </strong>
           </div>
-        ) : null}
+        )}
+
+        {metadata.fileSize && (
+          <div>
+            <span>
+              File size
+            </span>
+
+            <strong>
+              {formatFileSize(
+                metadata.fileSize
+              )}
+            </strong>
+          </div>
+        )}
       </div>
 
       <div className="record-footer document-card-footer">
         <small>
-          Uploaded {formatDate(documentRecord.created_at)}
+          Uploaded{" "}
+          {formatDate(
+            documentRecord.created_at
+          )}
         </small>
 
         <div className="document-actions">
-          {typeof openOriginalDocument === "function" &&
-          metadata.s3Key ? (
+          {typeof openOriginalDocument === "function" ? (
+            metadata.s3Key ? (
+              <button
+                type="button"
+                className="document-open-button"
+                onClick={() =>
+                  openOriginalDocument(
+                    documentRecord
+                  )
+                }
+              >
+                Open original
+              </button>
+            ) : (
+              <span className="original-unavailable">
+                Original unavailable
+              </span>
+            )
+          ) : null}
+
+          {canEdit &&
+          onRenameDocument &&
+          !isEditingTitle ? (
             <button
               type="button"
-              className="document-open-button"
-              onClick={() =>
-                openOriginalDocument(documentRecord)
-              }
+              className="secondary-button"
+              onClick={() => {
+                setEditingTitleId(documentRecord.id);
+                setTitleDraft(displayTitle);
+              }}
             >
-              Open original
+              Rename
             </button>
           ) : null}
 
-          {canDelete && onDeleteDocument ? (
-            pendingDeleteId === documentRecord.id ? (
+          {canEdit && onDeleteDocument ? (
+            pendingDeleteId ===
+            documentRecord.id ? (
               <>
                 <button
                   type="button"
                   className="danger-button"
-                  disabled={deletingId === documentRecord.id}
-                  onClick={() => confirmDelete(documentRecord)}
+                  disabled={
+                    deletingId ===
+                    documentRecord.id
+                  }
+                  onClick={() =>
+                    confirmDelete(
+                      documentRecord
+                    )
+                  }
                 >
-                  {deletingId === documentRecord.id
+                  {deletingId ===
+                  documentRecord.id
                     ? "Deleting…"
                     : "Confirm delete"}
                 </button>
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() => setPendingDeleteId(null)}
+                  onClick={() =>
+                    setPendingDeleteId(null)
+                  }
                 >
                   Cancel
                 </button>
@@ -182,7 +287,9 @@ function DocumentCard({
                 type="button"
                 className="secondary-button"
                 onClick={() =>
-                  setPendingDeleteId(documentRecord.id)
+                  setPendingDeleteId(
+                    documentRecord.id
+                  )
                 }
               >
                 Delete
@@ -195,17 +302,29 @@ function DocumentCard({
   );
 }
 
+
 function DocumentsPanel({
   documents,
   openOriginalDocument,
   onDeleteDocument,
-  canDelete = true,
+  onRenameDocument,
+  canEdit = true,
 }) {
-  const [deletingId, setDeletingId] = useState(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState(null);
-  const [deleteError, setDeleteError] = useState("");
+  const [deletingId, setDeletingId] =
+    useState(null);
+  const [pendingDeleteId, setPendingDeleteId] =
+    useState(null);
+  const [deleteError, setDeleteError] =
+    useState("");
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] =
+    useState("all");
+  const [editingTitleId, setEditingTitleId] =
+    useState(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [savingTitleId, setSavingTitleId] =
+    useState(null);
+  const [titleError, setTitleError] = useState("");
 
   async function confirmDelete(documentRecord) {
     if (!onDeleteDocument) {
@@ -229,11 +348,45 @@ function DocumentsPanel({
     }
   }
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+  async function saveTitle(documentRecord) {
+    if (!onRenameDocument) {
+      return;
+    }
 
-    return (documents || []).filter((documentRecord) => {
-      if (!matchesTypeFilter(documentRecord, typeFilter)) {
+    setSavingTitleId(documentRecord.id);
+    setTitleError("");
+
+    try {
+      await onRenameDocument(
+        documentRecord,
+        titleDraft
+      );
+      setEditingTitleId(null);
+    } catch (error) {
+      setTitleError(
+        error.response?.data?.error ||
+          error.message ||
+          "Could not rename this document."
+      );
+    } finally {
+      setSavingTitleId(null);
+    }
+  }
+
+  const filteredDocuments = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const filter = TYPE_FILTERS.find(
+      (item) => item.id === typeFilter
+    );
+
+    return documents.filter((documentRecord) => {
+      const type =
+        documentRecord.document_type || "general";
+
+      if (
+        filter?.types &&
+        !filter.types.includes(type)
+      ) {
         return false;
       }
 
@@ -242,11 +395,11 @@ function DocumentsPanel({
       }
 
       const haystack = [
-        documentTitle(documentRecord),
+        documentDisplayTitle(documentRecord),
         documentRecord.file_name,
         documentRecord.summary,
-        documentCompany(documentRecord),
         documentRecord.document_type,
+        documentCompany(documentRecord),
       ]
         .filter(Boolean)
         .join(" ")
@@ -257,108 +410,124 @@ function DocumentsPanel({
   }, [documents, query, typeFilter]);
 
   const yearGroups = useMemo(
-    () => groupByYear(filtered, documentDate),
-    [filtered]
+    () => groupByYear(filteredDocuments, documentDate),
+    [filteredDocuments]
   );
 
-  const typeCounts = useMemo(() => {
-    const counts = { all: (documents || []).length };
-
-    for (const filter of DOCUMENT_TYPE_FILTERS) {
-      if (filter.id === "all") {
-        continue;
-      }
-
-      counts[filter.id] = (documents || []).filter((doc) =>
-        matchesTypeFilter(doc, filter.id)
-      ).length;
-    }
-
-    return counts;
-  }, [documents]);
-
-  if ((documents || []).length === 0) {
-    return (
-      <div className="empty-state dashboard-empty">
-        <h4>No documents uploaded</h4>
-        <p>
-          Upload an inspection report, invoice, receipt,
-          warranty, equipment manual, or a photo of a nameplate
-          to begin building the home&apos;s document history.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="documents-library">
+    <CollapsibleSection
+      title="Document Library"
+      summary={countLabel(documents.length, "document")}
+      defaultOpen
+    >
+    <div className="documents-page">
+      {documents.length === 0 ? (
+        <div className="empty-state dashboard-empty">
+          <h4>
+            No documents uploaded
+          </h4>
+
+          <p>
+            Upload an inspection report,
+            invoice, receipt, warranty,
+            equipment manual, or a photo of
+            a nameplate to begin building
+            the home&apos;s document history.
+          </p>
+        </div>
+      ) : (
+        <>
       {deleteError ? (
         <p className="error-message" role="alert">
           {deleteError}
         </p>
       ) : null}
 
-      <input
-        type="search"
-        className="documents-search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search documents..."
-        aria-label="Search documents"
-      />
+      <div className="documents-toolbar">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) =>
+            setQuery(event.target.value)
+          }
+          placeholder="Search documents..."
+          aria-label="Search documents"
+        />
 
-      <FilterChips
-        ariaLabel="Document types"
-        value={typeFilter}
-        onChange={setTypeFilter}
-        options={DOCUMENT_TYPE_FILTERS.map((filter) => ({
-          ...filter,
-          count: typeCounts[filter.id],
-        }))}
-      />
+        <div
+          className="tab-list documents-type-filters"
+          role="tablist"
+          aria-label="Document types"
+        >
+          {TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              role="tab"
+              aria-selected={typeFilter === filter.id}
+              className={
+                typeFilter === filter.id
+                  ? "tab-button active"
+                  : "tab-button"
+              }
+              onClick={() => setTypeFilter(filter.id)}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <CollapsibleSection
-        title={`Document Library — ${filtered.length} document${
-          filtered.length === 1 ? "" : "s"
-        }`}
-        defaultOpen
-      >
-        {yearGroups.length === 0 ? (
-          <p className="muted">
-            No documents match that search.
+      {filteredDocuments.length === 0 ? (
+        <div className="empty-state dashboard-empty">
+          <h4>No matching documents</h4>
+          <p>
+            Try a different search or document type.
           </p>
-        ) : (
-          <div className="year-stack">
-            {yearGroups.map((group, index) => (
-              <CollapsibleSection
-                key={group.year}
-                title={`${group.year} — ${group.items.length} document${
-                  group.items.length === 1 ? "" : "s"
-                }`}
-                defaultOpen={index === 0}
-              >
-                <div className="record-grid">
-                  {group.items.map((documentRecord) => (
-                    <DocumentCard
-                      key={documentRecord.id}
-                      documentRecord={documentRecord}
-                      openOriginalDocument={openOriginalDocument}
-                      onDeleteDocument={onDeleteDocument}
-                      canDelete={canDelete}
-                      pendingDeleteId={pendingDeleteId}
-                      setPendingDeleteId={setPendingDeleteId}
-                      deletingId={deletingId}
-                      confirmDelete={confirmDelete}
-                    />
-                  ))}
-                </div>
-              </CollapsibleSection>
-            ))}
-          </div>
-        )}
-      </CollapsibleSection>
+        </div>
+      ) : (
+        yearGroups.map(([year, yearDocuments]) => (
+          <CollapsibleSection
+            key={year}
+            nested
+            variant="row"
+            title={String(year)}
+            summary={countLabel(yearDocuments.length, "document")}
+          >
+            <div className="record-grid">
+              {yearDocuments.map((documentRecord) => (
+                <DocumentCard
+                  key={documentRecord.id}
+                  documentRecord={documentRecord}
+                  openOriginalDocument={
+                    openOriginalDocument
+                  }
+                  onDeleteDocument={onDeleteDocument}
+                  onRenameDocument={onRenameDocument}
+                  canEdit={canEdit}
+                  deletingId={deletingId}
+                  pendingDeleteId={pendingDeleteId}
+                  setPendingDeleteId={setPendingDeleteId}
+                  confirmDelete={confirmDelete}
+                  editingTitleId={editingTitleId}
+                  titleDraft={titleDraft}
+                  setTitleDraft={setTitleDraft}
+                  setEditingTitleId={setEditingTitleId}
+                  savingTitleId={savingTitleId}
+                  titleError={titleError}
+                  onSaveTitle={saveTitle}
+                />
+              ))}
+            </div>
+          </CollapsibleSection>
+        ))
+      )}
+        </>
+      )}
     </div>
+    </CollapsibleSection>
   );
 }
+
 
 export default DocumentsPanel;

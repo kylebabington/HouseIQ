@@ -22,9 +22,13 @@ function NeedsBoard({
   isLoading,
   error,
   onSelectNeed,
-  hideHeader = false,
+  compact = false,
 }) {
-  const header = hideHeader ? null : (
+  const shellClass = compact
+    ? "needs-board-compact"
+    : "needs-board panel-block";
+
+  const heading = compact ? null : (
     <>
       <p className="eyebrow">Your home remembers</p>
       <h3>What your house needs</h3>
@@ -33,8 +37,8 @@ function NeedsBoard({
 
   if (isLoading) {
     return (
-      <section className="needs-board">
-        {header}
+      <section className={shellClass}>
+        {heading}
         <p className="muted">Loading priorities…</p>
       </section>
     );
@@ -42,8 +46,8 @@ function NeedsBoard({
 
   if (error) {
     return (
-      <section className="needs-board">
-        {header}
+      <section className={shellClass}>
+        {heading}
         <p className="error-message" role="alert">
           {error}
         </p>
@@ -53,8 +57,8 @@ function NeedsBoard({
 
   if (!items || items.length === 0) {
     return (
-      <section className="needs-board">
-        {header}
+      <section className={shellClass}>
+        {heading}
         <p>
           Nothing urgent from what HouseIQ knows yet.
           Upload a document or finish onboarding to
@@ -78,14 +82,14 @@ function NeedsBoard({
     ),
   };
 
-  function renderList(list, heading) {
+  function renderList(list, headingText) {
     if (!list.length) {
       return null;
     }
 
     return (
       <div className="needs-bucket">
-        {heading ? <h4>{heading}</h4> : null}
+        {headingText ? <h4>{headingText}</h4> : null}
         <ol className="needs-list">
           {list.map((item, index) => {
             const source = sourceLine(item);
@@ -138,15 +142,21 @@ function NeedsBoard({
     buckets["90_days"].length ||
     buckets["365_days"].length;
 
+  if (compact) {
+    return (
+      <section className={shellClass}>
+        {renderList(items.slice(0, 5), null)}
+      </section>
+    );
+  }
+
   return (
-    <section className="needs-board">
-      {header}
-      {hideHeader ? null : (
-        <p className="needs-board-intro">
-          Ranked plan for the next 30 / 90 / 365 days from
-          verified issues, projects, equipment, and climate.
-        </p>
-      )}
+    <section className={shellClass}>
+      {heading}
+      <p className="needs-board-intro">
+        Ranked plan for the next 30 / 90 / 365 days from
+        verified issues, projects, equipment, and climate.
+      </p>
 
       {hasBuckets ? (
         <>

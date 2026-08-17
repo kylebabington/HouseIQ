@@ -14,7 +14,6 @@ import {
 
 import ProvenanceLine from "../shared/ProvenanceLine.jsx";
 import CollapsibleSection from "../layout/CollapsibleSection.jsx";
-import FilterChips from "../layout/FilterChips.jsx";
 
 
 // ---------------------------------------------------------
@@ -35,6 +34,21 @@ const PROJECT_STATUSES = [
 ];
 
 
+function projectSummary(project) {
+  const parts = [formatLabel(project.status || "planned")];
+
+  if (
+    Number(project.estimated_cost_low) > 0 ||
+    Number(project.estimated_cost_high) > 0
+  ) {
+    parts.push(
+      `est. ${formatCurrency(project.estimated_cost_low)}–${formatCurrency(project.estimated_cost_high)}`
+    );
+  }
+
+  return parts.join(" · ");
+}
+
 function ProjectsPanel({
   projects,
   homeId,
@@ -42,6 +56,8 @@ function ProjectsPanel({
   onOpenDocument,
   highlightId,
 }) {
+  const [statusFilter, setStatusFilter] =
+    useState("all");
   // Tracks which project or task is currently saving, so its
   // control can disable itself while the request is in flight.
   const [savingKey, setSavingKey] =
@@ -50,9 +66,6 @@ function ProjectsPanel({
   // Keyed by project id so each card can show its own error.
   const [projectErrors, setProjectErrors] =
     useState({});
-
-  const [statusFilter, setStatusFilter] =
-    useState("active");
 
   async function handleProjectStatusChange(
     project,
@@ -140,24 +153,6 @@ function ProjectsPanel({
     }
   }
 
-  const planned = projects.filter(
-    (project) => project.status === "planned"
-  );
-  const active = projects.filter(
-    (project) => project.status === "in_progress"
-  );
-  const complete = projects.filter(
-    (project) =>
-      project.status === "completed" ||
-      project.status === "cancelled"
-  );
-  const visibleProjects =
-    statusFilter === "planned"
-      ? planned
-      : statusFilter === "complete"
-        ? complete
-        : active;
-
   if (projects.length === 0) {
     return (
       <div className="empty-state dashboard-empty">
@@ -172,85 +167,69 @@ function ProjectsPanel({
     );
   }
 
+  const visibleProjects = projects.filter((project) => {
+    const status = project.status || "planned";
+
+    if (statusFilter === "planned") {
+      return status === "planned";
+    }
+
+    if (statusFilter === "active") {
+      return status === "in_progress";
+    }
+
+    if (statusFilter === "complete") {
+      return status === "completed";
+    }
+
+    return true;
+  });
+
   return (
     <div className="projects-panel-wrap">
-      <FilterChips
-        ariaLabel="Project status"
-        value={statusFilter}
-        onChange={setStatusFilter}
-        options={[
-          {
-            id: "planned",
-            label: "Planned",
-            count: planned.length,
-          },
-          {
-            id: "active",
-            label: "Active",
-            count: active.length,
-          },
-          {
-            id: "complete",
-            label: "Complete",
-            count: complete.length,
-          },
-        ]}
-      />
+      <div
+        className="tab-list"
+        role="tablist"
+        aria-label="Project status"
+      >
+        {[
+          ["planned", "Planned"],
+          ["active", "Active"],
+          ["complete", "Complete"],
+          ["all", "All"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={statusFilter === id}
+            className={
+              statusFilter === id
+                ? "tab-button active"
+                : "tab-button"
+            }
+            onClick={() => setStatusFilter(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {visibleProjects.length === 0 ? (
-        <p className="muted">
-          No projects in this view.
-        </p>
+        <div className="empty-state dashboard-empty">
+          <h4>No {statusFilter} projects</h4>
+        </div>
       ) : (
     <div className="record-stack">
-      {visibleProjects.map((project) => {
-        const cost =
-          project.estimated_cost_low ||
-          project.estimated_cost_high
-            ? ` · est. ${formatCurrency(
-                project.estimated_cost_low
-              )}–${formatCurrency(
-                project.estimated_cost_high
-              )}`
-            : "";
-
-        return (
-          <CollapsibleSection
-            key={project.id}
-            title={`${project.title} — ${formatLabel(
-              project.status
-            )}${cost}`}
-            defaultOpen={
-              highlightId === project.id ||
-              project.status === "in_progress"
-            }
-          >
-        <article
+      {visibleProjects.map((project) => (
+        <CollapsibleSection
+          key={project.id}
           id={`record-project-${project.id}`}
-          className={
-            highlightId === project.id
-              ? "record-card project-card record-highlight"
-              : "record-card project-card"
-          }
+          variant="row"
+          title={project.title}
+          summary={projectSummary(project)}
+          defaultOpen={highlightId === project.id}
         >
-          <div className="record-card-header">
-            <div>
-              <span className="record-type">
-                Project
-              </span>
-
-              <h4>
-                {project.title}
-              </h4>
-            </div>
-
-            <span
-              className={`priority-badge priority-${project.priority}`}
-            >
-              {formatLabel(
-                project.priority
-              )}
-            </span>
-          </div>
 
           <ProvenanceLine
             sourceFileName={
@@ -268,6 +247,7 @@ function ProjectsPanel({
             evidencePage={
               project.evidence_page
             }
+            evidenceSources={project.evidence}
             onOpenDocument={onOpenDocument}
           />
 
@@ -422,12 +402,10 @@ function ProjectsPanel({
               }
             </p>
           )}
-        </article>
-          </CollapsibleSection>
-        );
-      })}
+        </CollapsibleSection>
+      ))}
     </div>
-    )}
+      )}
     </div>
   );
 }

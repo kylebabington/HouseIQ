@@ -1,53 +1,34 @@
-/**
- * Pull a four-digit year out of a date string, timestamp, or
- * filename-style value such as "2014-04-22".
- */
-export function yearFromDate(value) {
-  if (!value) {
-    return null;
-  }
+// frontend/src/utils/groupByYear.js
 
-  const date = new Date(value);
-
-  if (!Number.isNaN(date.getTime())) {
-    return date.getFullYear();
-  }
-
-  const match = String(value).match(/\d{4}/);
-  return match ? Number(match[0]) : null;
-}
+import { formatYear } from "./formatters.js";
 
 /**
- * Groups items by year, newest first. Items with no usable date
- * land in an "Unknown" bucket at the end.
+ * Groups records newest-year-first. `getDate` should return
+ * a date-like value; undated items land in "Unknown".
  */
 export function groupByYear(items, getDate) {
   const groups = new Map();
 
-  for (const item of items || []) {
-    const year = yearFromDate(getDate(item)) || "Unknown";
+  for (const item of items) {
+    const year = formatYear(getDate(item)) || "Unknown";
+    const existing = groups.get(year);
 
-    if (!groups.has(year)) {
-      groups.set(year, []);
+    if (existing) {
+      existing.push(item);
+    } else {
+      groups.set(year, [item]);
     }
-
-    groups.get(year).push(item);
   }
 
-  const years = [...groups.keys()].sort((left, right) => {
-    if (left === "Unknown") {
+  return [...groups.entries()].sort((a, b) => {
+    if (a[0] === "Unknown") {
       return 1;
     }
 
-    if (right === "Unknown") {
+    if (b[0] === "Unknown") {
       return -1;
     }
 
-    return right - left;
+    return Number(b[0]) - Number(a[0]);
   });
-
-  return years.map((year) => ({
-    year,
-    items: groups.get(year),
-  }));
 }
