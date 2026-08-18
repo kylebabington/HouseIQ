@@ -34,6 +34,15 @@ test.describe("HouseIQ public demo", () => {
         name: /Ask HouseIQ — Ask about repairs/i,
       })
     ).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "House pages" })
+      .getByRole("button", { name: "Memory Auditor" })
+      .click();
+    await expect(
+      page.getByRole("heading", {
+        name: /Memory Auditor \(CockroachDB MCP\)/i,
+      })
+    ).toBeVisible();
   });
 
   test("public demo API returns seeded story", async ({

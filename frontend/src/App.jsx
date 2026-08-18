@@ -589,6 +589,7 @@ function App() {
   function renderActiveSection() {
     switch (activeSection) {
       case "ask":
+      case "auditor":
         return null;
 
       case "documents":
@@ -984,10 +985,17 @@ function App() {
                 isLoading={isLoadingAgentRuns}
                 error={agentRunsError}
               />
+            </div>
+
+            <div
+              hidden={activeSection !== "auditor"}
+              className="auditor-page panel-enter"
+            >
               <MemoryAuditorPanel selectedHome={selectedHome} />
             </div>
 
-            {activeSection === "ask"
+            {activeSection === "ask" ||
+            activeSection === "auditor"
               ? null
               : renderActiveSection()}
           </>

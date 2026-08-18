@@ -1037,6 +1037,53 @@ export default function DemoExplore({
     );
   }
 
+  function renderAuditor() {
+    const auditRuns = agentRuns.filter(
+      (run) => run.run_kind === "memory_audit"
+    );
+
+    return (
+      <div className="auditor-page">
+        <section className="memory-auditor-panel panel-block">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">
+                Developer / Demo Details
+              </p>
+              <h3>
+                Memory Auditor (CockroachDB MCP)
+              </h3>
+            </div>
+            <span className="agent-status">
+              Read-only demo
+            </span>
+          </div>
+
+          <p className="memory-auditor-copy">
+            Live Memory Auditor queries run through
+            CockroachDB Cloud Managed MCP and require a
+            signed-in account. This public demo can only
+            replay audits already saved on the house.
+          </p>
+
+          {auditRuns.length > 0 ? (
+            <AdviceHistoryPanel
+              runs={auditRuns}
+              isLoading={false}
+              error=""
+            />
+          ) : (
+            <p>
+              No saved Memory Auditor runs yet. Log in and
+              open this tab to inspect HouseIQ memory
+              through CockroachDB MCP.
+            </p>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   function renderPassport() {
     return (
       <section className="panel-block">
@@ -1092,6 +1139,9 @@ export default function DemoExplore({
     switch (activeSection) {
       case "ask":
         return renderAsk();
+
+      case "auditor":
+        return renderAuditor();
 
       case "documents":
         return (
