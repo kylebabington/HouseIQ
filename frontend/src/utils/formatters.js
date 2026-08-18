@@ -139,31 +139,6 @@ export function formatMonthYear(value) {
 }
 
 /**
- * Compact date for timeline and activity rows.
- *
- * Examples:
- *
- * "2021-06-18" becomes "Jun 18"
- * invalid / empty becomes null
- */
-export function formatShortDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/**
  * Formats a cost as US currency.
  *
  * Examples:
