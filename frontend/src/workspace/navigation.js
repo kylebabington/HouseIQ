@@ -1,11 +1,12 @@
 // Primary HouseIQ workspace navigation.
 //
-// Six top-level pages, with Records and Home keeping small
+// Primary pages, with Records and Home keeping small
 // secondary tabs. Do not add more top-level destinations.
 
 export const PRIMARY_SECTIONS = [
   { id: "overview", label: "Overview" },
   { id: "ask", label: "Ask HouseIQ" },
+  { id: "auditor", label: "Memory Auditor" },
   { id: "documents", label: "Documents" },
   { id: "records", label: "Records" },
   { id: "history", label: "History" },

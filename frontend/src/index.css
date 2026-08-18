@@ -657,7 +657,7 @@ button.primary-nav-button {
   border-radius: 0;
 
   margin-bottom: -1px;
-  padding: 0.7rem 0.9rem;
+  padding: 0.7rem 0.72rem;
 
   background: transparent;
   color: var(--muted);
@@ -2885,6 +2885,15 @@ div.needs-item {
 /* --------------------------------------------------------- */
 /* MEMORY AUDITOR (CockroachDB MCP)                          */
 /* --------------------------------------------------------- */
+
+.auditor-page {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.auditor-page .memory-auditor-panel {
+  margin-top: 0;
+}
 
 .memory-auditor-panel {
   margin-top: 1.25rem;

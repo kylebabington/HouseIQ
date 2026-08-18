@@ -1,12 +1,13 @@
 // frontend/src/navigation.js
 //
-// Six primary HouseIQ pages. Records and Home keep a small
+// Seven primary HouseIQ pages. Records and Home keep a small
 // secondary tab strip so we do not flatten every panel into
 // the top-level nav.
 
 export const PRIMARY_SECTIONS = [
   { id: "overview", label: "Overview" },
   { id: "ask", label: "Ask HouseIQ" },
+  { id: "auditor", label: "Memory Auditor" },
   { id: "documents", label: "Documents" },
   { id: "records", label: "Records" },
   { id: "history", label: "History" },
