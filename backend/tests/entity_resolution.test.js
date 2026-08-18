@@ -231,4 +231,54 @@ describe("entity resolution", () => {
         expect(decision.action).toBe("link");
         expect(decision.confidence).toBe("exact");
     });
+
+    test("later furnace service attaches to the original furnace", () => {
+        const decision = resolveCandidate(
+            "asset",
+            {
+                assetType: "hvac",
+                name: "Furnace blower motor replacement",
+            },
+            [
+                {
+                    id: "a-furnace",
+                    asset_type: "furnace",
+                    name: "High-efficiency furnace",
+                    notes: "Carrier 96% installed 2014",
+                },
+            ],
+            {
+                fileName:
+                    "37__2023-02-14_E2023-01_invoice_furnace_blower_motor_replacement.txt",
+            }
+        );
+
+        expect(decision.action).toBe("link");
+        expect(decision.match.id).toBe("a-furnace");
+    });
+
+    test("2018 capacitor and 2020 refrigerant work stay on one AC", () => {
+        const decision = resolveCandidate(
+            "asset",
+            {
+                assetType: "air_conditioner",
+                name: "Air conditioner refrigerant leak service",
+            },
+            [
+                {
+                    id: "a-ac",
+                    asset_type: "hvac",
+                    name: "Outdoor condenser",
+                    notes: "Capacitor replaced 2018",
+                },
+            ],
+            {
+                fileName:
+                    "29__2020-07-22_E2020-04_invoice_air_conditioner_refrigerant_leak_service.pdf",
+            }
+        );
+
+        expect(decision.action).toBe("link");
+        expect(decision.match.id).toBe("a-ac");
+    });
 });

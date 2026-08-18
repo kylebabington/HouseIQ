@@ -20,6 +20,7 @@ import getAuthScreen from "./components/auth/getAuthScreen.jsx";
 
 import AgentPanel from "./components/agent/AgentPanel.jsx";
 import AdviceHistoryPanel from "./components/agent/AdviceHistoryPanel.jsx";
+import MemoryAuditorPanel from "./components/agent/MemoryAuditorPanel.jsx";
 import DocumentUploadPanel from "./components/documents/DocumentUploadPanel.jsx";
 import ManualMemoryPanel from "./components/memories/ManualMemoryPanel.jsx";
 
@@ -983,6 +984,7 @@ function App() {
                 isLoading={isLoadingAgentRuns}
                 error={agentRunsError}
               />
+              <MemoryAuditorPanel selectedHome={selectedHome} />
             </div>
 
             {activeSection === "ask"

@@ -1,0 +1,61 @@
+HVAC ANNUAL INSPECTION
+FOR TESTING PURPOSES ONLY — NOT A REAL INSPECTION
+
+---
+
+CoolBreeze Heating & Air, LLC
+2450 Westfield Service Road
+Indianapolis, IN 46240
+
+Inspection Date: October 8, 2025
+Report Number: CB-2025-1008
+Property: 1842 Maple Ridge Drive, Indianapolis, IN 46227
+Customer: Jordan Miller
+
+---
+
+SYSTEMS INSPECTED
+
+1. Gas furnace (same equipment installed November 2014)
+   Manufacturer: Carrier
+   Model: 59TN6A060V17--14
+   Serial: SAMPLE14FURNACE
+   Location: Basement mechanical room
+   History already on file for this home:
+     - Installed 2014 (high-efficiency replacement)
+     - Blower motor replaced February 2023
+   Findings: Heat exchanger visually intact. Temperature rise normal.
+   Filter dirty; replaced. No gas leak detected.
+   Recommendation: Continue annual service. Budget for replacement
+   within about 5–9 years.
+
+2. Central air conditioner (same outdoor condenser)
+   Manufacturer: Carrier
+   Model: 24ACC636A003
+   Serial: SAMPLE2406C7812
+   History already on file:
+     - Capacitor failure July 2018
+     - Refrigerant leak service July 2020
+   Findings: Capacitor still in range. Superheat/subcooling acceptable.
+   Condenser fins moderately dirty.
+   Recommendation: Coil cleaning next spring. Equipment is aging;
+   plan financially for possible AC replacement in the next 3 years.
+
+3. Gas water heater (replaced April 2014)
+   No active leak. T&P discharge clear. Typical remaining life 2–4 years.
+
+---
+
+SUMMARY FOR THE HOMEOWNER
+
+HouseIQ should treat this visit as an inspection of equipment the
+house already knows, not as new systems. The furnace is the 2014
+Carrier. The air conditioner is the same condenser serviced in 2018
+and 2020.
+
+Estimated near-term budget items:
+* AC replacement planning: $5,500–$8,500 within 3 years
+* Water heater replacement: $1,400–$2,200 within 2–4 years
+* Furnace remaining serviceable; not an immediate replacement
+
+Disclaimer: Entirely fictional sample document for HouseIQ demos.

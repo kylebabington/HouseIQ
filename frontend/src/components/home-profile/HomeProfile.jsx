@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import HomeOnboarding from "./HomeOnboarding";
+import CollapsibleSection from "../layout/CollapsibleSection.jsx";
 
 import {
     EMPTY_PROFILE_FORM,
@@ -53,9 +54,23 @@ function formatNumber(value) {
         return "Unknown";
     }
 
-    return new Intl.NumberFormat(
+    return Intl.NumberFormat(
         "en-US"
     ).format(number);
+}
+
+
+function sectionKnownSummary(section, profile) {
+    const filled = section.fields.filter((field) => {
+        const value = profile?.[field.name];
+        return (
+            value !== null &&
+            value !== undefined &&
+            value !== ""
+        );
+    }).length;
+
+    return `${filled} of ${section.fields.length} known`;
 }
 
 
@@ -673,23 +688,18 @@ function HomeProfile({
             ) : (
                 <div className="profile-sections">
                     {PROFILE_SECTIONS.map(
-                        (section) => (
-                            <section
+                        (section, index) => (
+                            <CollapsibleSection
                                 key={section.id}
+                                title={`${section.title} — ${sectionKnownSummary(
+                                    section,
+                                    profile
+                                )}`}
+                                defaultOpen={index === 0}
+                            >
+                            <section
                                 className="profile-section-card"
                             >
-                                <header>
-                                    <h4>
-                                        {section.title}
-                                    </h4>
-
-                                    <p>
-                                        {
-                                            section.description
-                                        }
-                                    </p>
-                                </header>
-
                                 <dl className="profile-detail-grid">
                                     {section.fields.map(
                                         (field) => {
@@ -754,6 +764,7 @@ function HomeProfile({
                                     )}
                                 </dl>
                             </section>
+                            </CollapsibleSection>
                         )
                     )}
                 </div>

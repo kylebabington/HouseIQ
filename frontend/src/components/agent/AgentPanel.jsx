@@ -11,6 +11,8 @@ import api from "../../api.js";
 
 import {
   formatLabel,
+  formatSimilarity,
+  memorySourceLabel,
 } from "../../utils/formatters.js";
 import { SUGGESTED_HOME_QUESTIONS } from "../../navigation.js";
 import CollapsibleSection from "../layout/CollapsibleSection.jsx";
@@ -145,6 +147,7 @@ function turnsFromAgentRuns(runs) {
       actionsTaken: run.actions_taken || [],
       contextUsed: null,
       citations: run.citations || [],
+      memoriesUsed: run.memories_used || [],
     }));
 }
 
@@ -283,6 +286,10 @@ function AgentPanel({
             actionsTaken: data.actionsTaken || [],
             contextUsed: data.contextUsed || null,
             citations: data.citations || [],
+            memoriesUsed: data.memoriesUsed || [],
+            toolTrace: data.toolTrace || null,
+            model: data.model || null,
+            durationMs: data.durationMs ?? null,
           },
         ];
       });
@@ -369,6 +376,46 @@ function AgentPanel({
       <p className="turn-context-used">
         Used: {summary || "No stored home context yet"}
       </p>
+    );
+  }
+
+  function renderMemoryInspector(memoriesUsed) {
+    if (!Array.isArray(memoriesUsed) || memoriesUsed.length === 0) {
+      return null;
+    }
+
+    return (
+      <details className="memory-inspector">
+        <summary>
+          Why HouseIQ knows this
+        </summary>
+        <p className="muted">
+          Relevant memories used — retrieved from
+          CockroachDB vector search, not invented by
+          the model.
+        </p>
+        <ol className="memory-inspector-list">
+          {memoriesUsed.map((memory) => {
+            const similarity = formatSimilarity(
+              memory.similarity
+            );
+
+            return (
+              <li key={memory.id || memory.title}>
+                <strong>
+                  {memory.title || "Memory"}
+                </strong>
+                <p className="muted">
+                  Source: {memorySourceLabel(memory)}
+                  {similarity
+                    ? ` · Similarity: ${similarity}`
+                    : ""}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
     );
   }
 
@@ -502,6 +549,8 @@ function AgentPanel({
                 {renderContextUsedSummary(
                   turn.contextUsed
                 )}
+
+                {renderMemoryInspector(turn.memoriesUsed)}
 
                 {turn.clarifyingQuestions?.length > 0 && (
                     <section className="clarifying-section">

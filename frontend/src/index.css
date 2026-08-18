@@ -2880,3 +2880,117 @@ div.needs-item {
     display: none !important;
   }
 }
+
+
+/* --------------------------------------------------------- */
+/* MEMORY AUDITOR (CockroachDB MCP)                          */
+/* --------------------------------------------------------- */
+
+.memory-auditor-panel {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  border: 1px dashed rgba(61, 92, 66, 0.35);
+  border-radius: 22px;
+  background: rgba(248, 251, 245, 0.85);
+}
+
+.memory-auditor-copy {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.memory-auditor-result {
+  margin-top: 1.15rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.mcp-tool-trace h4 {
+  margin: 0 0 0.35rem;
+}
+
+.mcp-tool-trace-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.mcp-tool-trace-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  align-items: baseline;
+}
+
+.mcp-sql {
+  margin: 0.4rem 0 0;
+  padding: 0.7rem 0.8rem;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: #213927;
+  color: #eff8eb;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.mcp-tool-error {
+  color: #8a2f2f;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+
+/* --------------------------------------------------------- */
+/* MEMORY INSPECTOR / AGENT RUN INSPECTOR                    */
+/* --------------------------------------------------------- */
+
+.memory-inspector {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed rgba(61, 92, 66, 0.35);
+  border-radius: 16px;
+  background: rgba(248, 251, 245, 0.85);
+}
+
+.memory-inspector summary,
+.agent-run-inspector summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.memory-inspector-list,
+.run-pipeline {
+  margin: 0.55rem 0 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.run-pipeline li {
+  line-height: 1.4;
+}
+
+.run-meta-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.85rem 0;
+}
+
+.run-meta-grid dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.run-meta-grid dd {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.agent-run-inspector h5 {
+  margin: 0.85rem 0 0.25rem;
+  font-size: 0.88rem;
+}

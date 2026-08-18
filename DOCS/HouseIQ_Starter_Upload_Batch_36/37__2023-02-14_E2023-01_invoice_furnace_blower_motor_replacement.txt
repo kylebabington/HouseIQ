@@ -1,0 +1,66 @@
+FURNACE BLOWER MOTOR REPLACEMENT INVOICE
+FOR TESTING PURPOSES ONLY — NOT A REAL INVOICE
+
+---
+
+CoolBreeze Heating & Air, LLC
+2450 Westfield Service Road
+Indianapolis, IN 46240
+Indiana HVAC Contractor License: SAMPLE-48291
+
+Invoice Number: CB-2023-0214
+Invoice Date: February 14, 2023
+Service Date: February 14, 2023
+Payment Status: PAID
+
+Customer: Jordan Miller
+Service Address: 1842 Maple Ridge Drive, Indianapolis, IN 46227
+
+---
+
+EQUIPMENT
+
+This work was performed on the existing high-efficiency gas furnace
+installed at this home in November 2014.
+
+Equipment Type: Gas furnace
+Manufacturer: Carrier
+Model: 59TN6A060V17--14
+Serial: SAMPLE14FURNACE
+Location: Basement mechanical room
+Original install: November 2014 (HouseIQ event E2014-03)
+
+This is not a new furnace. The 2014 Carrier 96% furnace remains in
+service. The indoor blower motor failed and was replaced.
+
+---
+
+CUSTOMER COMPLAINT
+
+Homeowner reported weak airflow from supply vents and a rattling
+noise from the furnace during a heating cycle.
+
+---
+
+REPAIRS PERFORMED
+
+* Diagnosed failed indoor blower motor on the 2014 Carrier furnace.
+* Replaced the blower motor and module.
+* Verified inducer, igniter, and heat exchanger operation.
+* Confirmed temperature rise within manufacturer range.
+
+Parts and labor total: $842.00
+Paid in full.
+
+---
+
+TECHNICIAN NOTES
+
+The furnace itself (heat exchanger, burners, and control board) is
+the original 2014 high-efficiency unit. Expect remaining useful life
+of roughly 7–11 years with annual service. Recommend budgeting for
+eventual furnace replacement in the 2030–2034 window, not immediately.
+
+Technician: Alex Carter
+Authorization: /s/ Jordan Miller
+Disclaimer: Entirely fictional sample document for HouseIQ demos.

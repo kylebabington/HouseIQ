@@ -138,7 +138,6 @@ export function formatMonthYear(value) {
   });
 }
 
-
 /**
  * Formats a cost as US currency.
  *
@@ -226,4 +225,44 @@ export function formatFileSize(bytes) {
     number /
     (1024 * 1024)
   ).toFixed(1)} MB`;
+}
+
+export function formatSimilarity(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return number.toFixed(2);
+}
+
+export function memorySourceLabel(memory) {
+  if (!memory || typeof memory !== "object") {
+    return "Stored memory";
+  }
+
+  const file =
+    memory.sourceFileName ||
+    memory.source_file_name ||
+    "";
+  const type =
+    memory.sourceDocumentType ||
+    memory.source_document_type ||
+    "";
+  const page =
+    memory.evidencePage ||
+    memory.evidence_page ||
+    null;
+
+  let label =
+    file ||
+    (type ? formatLabel(type) : "") ||
+    "Stored memory";
+
+  if (page) {
+    label = `${label} — p. ${page}`;
+  }
+
+  return label;
 }

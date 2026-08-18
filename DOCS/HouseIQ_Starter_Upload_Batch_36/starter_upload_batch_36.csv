@@ -1,0 +1,40 @@
+upload_order,filename,upload_document_type,event_id,event_title,document_kind
+1,documents/2012/2012-06-12_E2012-01_inspection_pre_purchase_home_inspection.pdf,inspection,E2012-01,Pre-purchase home inspection,inspection
+2,documents/2012/2012-06-14_E2012-03_sewer_scope_pre_purchase_sewer_scope.pdf,inspection,E2012-03,Pre-purchase sewer scope,sewer_scope
+3,documents/2014/2014-04-22_E2014-01_estimate_gas_water_heater_replacement.pdf,invoice,E2014-01,Gas water heater replacement,estimate
+4,documents/2014/2014-04-22_E2014-01_invoice_gas_water_heater_replacement.pdf,invoice,E2014-01,Gas water heater replacement,invoice
+5,documents/2014/2014-04-22_E2014-01_warranty_gas_water_heater_replacement.pdf,warranty,E2014-01,Gas water heater replacement,warranty
+6,documents/2014/2014-04-22_E2014-01_manual_gas_water_heater_replacement.pdf,manual,E2014-01,Gas water heater replacement,manual
+7,documents/2014/2014-11-03_E2014-03_proposal_high_efficiency_furnace_replacement.pdf,invoice,E2014-03,High-efficiency furnace replacement,proposal
+8,documents/2014/2014-11-03_E2014-03_permit_high_efficiency_furnace_replacement.pdf,invoice,E2014-03,High-efficiency furnace replacement,permit
+9,documents/2014/2014-11-03_E2014-03_invoice_high_efficiency_furnace_replacement.pdf,invoice,E2014-03,High-efficiency furnace replacement,invoice
+10,documents/2014/2014-11-03_E2014-03_warranty_high_efficiency_furnace_replacement.pdf,warranty,E2014-03,High-efficiency furnace replacement,warranty
+11,documents/2014/2014-11-03_E2014-03_manual_high_efficiency_furnace_replacement.pdf,manual,E2014-03,High-efficiency furnace replacement,manual
+12,documents/2017/2017-03-20_E2017-01_inspection_garage_roof_leak_investigation.pdf,inspection,E2017-01,Garage roof leak investigation,inspection
+13,documents/2017/2017-03-20_E2017-01_estimate_garage_roof_leak_investigation.pdf,invoice,E2017-01,Garage roof leak investigation,estimate
+14,documents/2017/2017-03-20_E2017-01_invoice_garage_roof_leak_investigation.pdf,invoice,E2017-01,Garage roof leak investigation,invoice
+15,documents/2017/2017-03-20_E2017-01_warranty_garage_roof_leak_investigation.pdf,warranty,E2017-01,Garage roof leak investigation,warranty
+16,documents/2018/2018-07-18_E2018-01_service_report_air_conditioner_capacitor_failure.pdf,inspection,E2018-01,Air conditioner capacitor failure,service_report
+17,documents/2018/2018-07-18_E2018-01_invoice_air_conditioner_capacitor_failure.pdf,invoice,E2018-01,Air conditioner capacitor failure,invoice
+18,documents/2018/2018-07-18_E2018-01_warranty_air_conditioner_capacitor_failure.pdf,warranty,E2018-01,Air conditioner capacitor failure,warranty
+19,documents/2019/2019-04-06_E2019-01_inspection_chimney_side_roof_leak_investigation.pdf,inspection,E2019-01,Chimney-side roof leak investigation,inspection
+20,documents/2019/2019-04-06_E2019-01_estimate_chimney_side_roof_leak_investigation.pdf,invoice,E2019-01,Chimney-side roof leak investigation,estimate
+21,documents/2019/2019-04-06_E2019-01_invoice_chimney_side_roof_leak_investigation.pdf,invoice,E2019-01,Chimney-side roof leak investigation,invoice
+22,documents/2019/2019-04-06_E2019-01_warranty_chimney_side_roof_leak_investigation.pdf,warranty,E2019-01,Chimney-side roof leak investigation,warranty
+23,documents/2020/2020-05-17_E2020-01_inspection_basement_water_intrusion_after_heavy_storm.pdf,inspection,E2020-01,Basement water intrusion after heavy storm,inspection
+24,documents/2020/2020-05-19_E2020-02_estimate_sump_pump_replacement.pdf,invoice,E2020-02,Sump pump replacement,estimate
+25,documents/2020/2020-05-19_E2020-02_invoice_sump_pump_replacement.pdf,invoice,E2020-02,Sump pump replacement,invoice
+26,documents/2020/2020-05-19_E2020-02_warranty_sump_pump_replacement.pdf,warranty,E2020-02,Sump pump replacement,warranty
+27,documents/2020/2020-05-19_E2020-02_manual_sump_pump_replacement.pdf,manual,E2020-02,Sump pump replacement,manual
+28,documents/2020/2020-07-22_E2020-04_service_report_air_conditioner_refrigerant_leak_service.pdf,inspection,E2020-04,Air conditioner refrigerant leak service,service_report
+29,documents/2020/2020-07-22_E2020-04_invoice_air_conditioner_refrigerant_leak_service.pdf,invoice,E2020-04,Air conditioner refrigerant leak service,invoice
+30,documents/2021/2021-04-12_E2021-01_inspection_roof_condition_assessment.pdf,inspection,E2021-01,Roof condition assessment,inspection
+31,documents/2021/2021-04-16_E2021-02_estimate_roof_replacement_quote_cedar_ridge.pdf,invoice,E2021-02,Roof replacement quote - Cedar Ridge,estimate
+32,documents/2021/2021-04-16_E2021-02_proposal_roof_replacement_quote_cedar_ridge.pdf,invoice,E2021-02,Roof replacement quote - Cedar Ridge,proposal
+33,documents/2021/2021-04-18_E2021-03_estimate_roof_replacement_quote_skyline.pdf,invoice,E2021-03,Roof replacement quote - Skyline,estimate
+34,documents/2021/2021-06-18_E2021-04_permit_full_roof_replacement.pdf,invoice,E2021-04,Full roof replacement,permit
+35,documents/2021/2021-06-18_E2021-04_invoice_full_roof_replacement.pdf,invoice,E2021-04,Full roof replacement,invoice
+36,documents/2021/2021-06-18_E2021-04_warranty_1_full_roof_replacement.pdf,warranty,E2021-04,Full roof replacement,warranty
+37,documents/2023/2023-02-14_E2023-01_invoice_furnace_blower_motor_replacement.txt,invoice,E2023-01,Furnace blower motor replacement,invoice
+38,documents/2025/2025-10-08_E2025-01_inspection_hvac_annual_inspection.txt,inspection,E2025-01,HVAC annual inspection,inspection
+39,documents/2026/2026-07-18_E2026-01_invoice_air_conditioner_capacitor_service.txt,invoice,E2026-01,Air conditioner capacitor service,invoice

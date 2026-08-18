@@ -389,6 +389,12 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     NOT NULL
     DEFAULT '[]'::JSONB,
 
+  run_kind STRING NOT NULL DEFAULT 'ask',
+
+  tool_trace JSONB
+    NOT NULL
+    DEFAULT '[]'::JSONB,
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -434,6 +440,14 @@ NOT NULL DEFAULT '[]'::JSONB;
 
 ALTER TABLE agent_runs
 ADD COLUMN IF NOT EXISTS actions_taken JSONB
+NOT NULL DEFAULT '[]'::JSONB;
+
+ALTER TABLE agent_runs
+ADD COLUMN IF NOT EXISTS run_kind STRING
+NOT NULL DEFAULT 'ask';
+
+ALTER TABLE agent_runs
+ADD COLUMN IF NOT EXISTS tool_trace JSONB
 NOT NULL DEFAULT '[]'::JSONB;
 
 
