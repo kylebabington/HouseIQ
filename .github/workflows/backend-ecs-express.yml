@@ -1,0 +1,73 @@
+# .github/workflows/backend-ecs-express.yml
+#
+# Manual deploy of the Express API:
+#   GitHub → Docker image → Amazon ECR → ECS Express Mode
+#
+# Do not enable push-to-main until AWS_ROLE_TO_ASSUME,
+# ECR repository, and the two ECS Express IAM roles exist.
+# First-time service creation is still the ECS console
+# (Express mode → Create). This workflow updates the image.
+
+name: Backend ECS Express Mode
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-ecs-express
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: houseiq-api
+  ECS_SERVICE_NAME: houseiq-api
+
+jobs:
+  deploy:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
+            -f backend/Dockerfile \
+            backend
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+      - name: Deploy to ECS Express Mode
+        uses: aws-actions/amazon-ecs-deploy-express-service@v1
+        with:
+          service-name: ${{ env.ECS_SERVICE_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          execution-role-arn: ${{ secrets.ECS_EXECUTION_ROLE_ARN }}
+          infrastructure-role-arn: ${{ secrets.ECS_INFRASTRUCTURE_ROLE_ARN }}
+          container-port: 8080
+          health-check-path: /api/health
+          cpu: "512"
+          memory: "1024"
+          min-task-count: 1
+          max-task-count: 2

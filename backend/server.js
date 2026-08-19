@@ -36,6 +36,13 @@ import { createRecordsRouter } from "./routes/records.js";
 
 const app = express();
 
+if (process.env.NODE_ENV === "production") {
+    // ECS Express Mode puts an Application Load Balancer in
+    // front of the task. Trust the first hop so IP rate limits
+    // see the client address from X-Forwarded-For.
+    app.set("trust proxy", 1);
+}
+
 function allowedCorsOrigins() {
     return String(
         process.env.FRONTEND_URL ||
@@ -180,11 +187,19 @@ const upload = multer({
 // It lets us confirm that the Express server is running
 // without requiring an Auth0 access token.
 //
+function healthPayload() {
+    return {
+        ok: true,
+        message: "HouseIQ backend is running",
+    };
+}
+
 app.get("/", (req, res) => {
-    res.json({
-        message:
-            "HouseIQ backend is running",
-    });
+    res.json(healthPayload());
+});
+
+app.get("/api/health", (req, res) => {
+    res.json(healthPayload());
 });
 
 app.use(

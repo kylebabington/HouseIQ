@@ -10,7 +10,7 @@ database remembers.
                 React Frontend
                       │
                       ▼
-                Express API
+                Express API (Amazon ECS Express Mode / Fargate)
                  /         \
                 /           \
                ▼             ▼

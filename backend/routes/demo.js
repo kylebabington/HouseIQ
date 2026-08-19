@@ -14,7 +14,21 @@ import {
     requireAuth,
 } from "../middleware/auth.js";
 import { pool } from "../db/pool.js";
-import { demoReadRateLimit } from "../middleware/rateLimit.js";
+import { demoReadRateLimit, demoLiveRateLimit } from "../middleware/rateLimit.js";
+import {
+    isMcpConfigured,
+} from "../services/mcp/cockroachMcp.js";
+import {
+    runMemoryAuditor,
+} from "../services/ai/memoryAuditor.js";
+import {
+    runReadOnlyAsk,
+} from "../services/ai/runReadOnlyAsk.js";
+import {
+    JUDGE_ASK_QUESTION,
+    JUDGE_AUDIT_QUESTION,
+    getPublicDemoHomeId,
+} from "../lib/judgeDemo.js";
 
 const DEMO_CACHE_TTL_MS = 30 * 1000;
 
@@ -820,6 +834,148 @@ export function createDemoRouter() {
                 });
             } finally {
                 client?.release();
+            }
+        }
+    );
+
+    router.post(
+        "/demo/live/ask",
+        demoLiveRateLimit,
+        async (_req, res) => {
+            const demoHomeId = getPublicDemoHomeId();
+
+            if (!demoHomeId) {
+                return res.status(404).json({
+                    error:
+                        "The public demo home is not configured.",
+                });
+            }
+
+            try {
+                const result = await runReadOnlyAsk({
+                    homeId: demoHomeId,
+                    question: JUDGE_ASK_QUESTION,
+                });
+
+                return res.json({
+                    ...result,
+                    question: JUDGE_ASK_QUESTION,
+                });
+            } catch (error) {
+                if (error.code === "HOME_NOT_FOUND") {
+                    return res.status(404).json({
+                        error: "Home not found",
+                    });
+                }
+
+                console.error(
+                    "Public live Ask failed:",
+                    error
+                );
+                return res.status(500).json({
+                    error:
+                        "HouseIQ could not run the live memory query.",
+                });
+            }
+        }
+    );
+
+    router.post(
+        "/demo/live/audit",
+        demoLiveRateLimit,
+        async (_req, res) => {
+            const demoHomeId = getPublicDemoHomeId();
+
+            if (!demoHomeId) {
+                return res.status(404).json({
+                    error:
+                        "The public demo home is not configured.",
+                });
+            }
+
+            if (!isMcpConfigured()) {
+                return res.status(503).json({
+                    error:
+                        "CockroachDB Cloud MCP is not configured",
+                });
+            }
+
+            try {
+                const homeResult = await pool.query(
+                    `SELECT id, name FROM homes WHERE id = $1`,
+                    [demoHomeId]
+                );
+                const home = homeResult.rows[0] || {
+                    id: demoHomeId,
+                    name: null,
+                };
+
+                const auditorResult = await runMemoryAuditor({
+                    question: JUDGE_AUDIT_QUESTION,
+                    homeId: demoHomeId,
+                    homeName: home.name,
+                });
+
+                const agentRunResult = await pool.query(
+                    `
+                    INSERT INTO agent_runs (
+                        home_id,
+                        user_question,
+                        answer,
+                        status,
+                        confidence,
+                        needs_more_info,
+                        clarifying_questions,
+                        memories_used,
+                        actions_taken,
+                        run_kind,
+                        tool_trace
+                    )
+                    VALUES (
+                        $1, $2, $3, $4, $5, $6,
+                        $7::JSONB, $8::JSONB, $9::JSONB, $10, $11::JSONB
+                    )
+                    RETURNING id
+                    `,
+                    [
+                        demoHomeId,
+                        JUDGE_AUDIT_QUESTION,
+                        auditorResult.answer,
+                        "completed",
+                        "medium",
+                        false,
+                        JSON.stringify([]),
+                        JSON.stringify([]),
+                        JSON.stringify([]),
+                        "memory_audit",
+                        JSON.stringify(
+                            auditorResult.toolTrace || []
+                        ),
+                    ]
+                );
+
+                return res.json({
+                    question: JUDGE_AUDIT_QUESTION,
+                    home: {
+                        id: home.id,
+                        name: home.name,
+                    },
+                    answer: auditorResult.answer,
+                    toolTrace: auditorResult.toolTrace,
+                    model: auditorResult.model,
+                    durationMs: auditorResult.durationMs,
+                    via: "cockroachdb-cloud-mcp",
+                    agentRunId: agentRunResult.rows[0]?.id,
+                });
+            } catch (error) {
+                console.error(
+                    "Public live MCP audit failed:",
+                    error
+                );
+                return res.status(500).json({
+                    error:
+                        "HouseIQ could not run the live MCP audit.",
+                });
             }
         }
     );

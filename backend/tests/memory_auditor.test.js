@@ -233,6 +233,67 @@ describe("Memory Auditor SQL guard", () => {
         expect(filled.database).toBe("houseiq");
         expect(filled.query).toBe("SELECT 1");
     });
+
+    test("overwrites a caller-supplied database", () => {
+        const filled = fillMcpToolArgs(
+            "select_query",
+            {
+                query: "SELECT 1",
+                database: "defaultdb",
+            },
+            {
+                clusterId: "cluster-1",
+                database: "houseiq",
+            }
+        );
+
+        expect(filled.database).toBe("houseiq");
+    });
+
+    test("rejects UNION that scopes only the first SELECT", () => {
+        expect(() =>
+            assertSelectQueryAllowed(
+                `SELECT id FROM memories WHERE home_id = '${homeId}' UNION SELECT id FROM memories`,
+                homeId
+            )
+        ).toThrow(/UNION/);
+    });
+
+    test("rejects CTE / WITH queries", () => {
+        expect(() =>
+            assertSelectQueryAllowed(
+                `WITH x AS (SELECT id FROM memories WHERE home_id = '${homeId}') SELECT * FROM x`,
+                homeId
+            )
+        ).toThrow(/WITH/);
+    });
+
+    test("rejects an unscoped subquery", () => {
+        expect(() =>
+            assertSelectQueryAllowed(
+                `SELECT id FROM memories WHERE home_id = '${homeId}' AND id IN (SELECT id FROM memories)`,
+                homeId
+            )
+        ).toThrow(/Subqueries|SELECT/);
+    });
+
+    test("rejects SQL comments used to obfuscate extra statements", () => {
+        expect(() =>
+            assertSelectQueryAllowed(
+                `SELECT id FROM memories WHERE home_id = '${homeId}'; /* ; */ SELECT id FROM homes`,
+                homeId
+            )
+        ).toThrow(/Multiple|SELECT/);
+    });
+
+    test("still requires home_id after comment stripping", () => {
+        expect(() =>
+            assertSelectQueryAllowed(
+                `SELECT id FROM memories WHERE /* home_id = '${homeId}' */ id IS NOT NULL`,
+                homeId
+            )
+        ).toThrow(/home_id/);
+    });
 });
 
 

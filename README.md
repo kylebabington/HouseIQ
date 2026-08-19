@@ -11,11 +11,16 @@ and HouseIQ can show you exactly where it learned what it knows.
 
 [Live Demo](#) · [Demo Video](#)
 
+Paste the production frontend URL and the ~3 minute video URL after
+ECS Express Mode is serving the API and the walkthrough is recorded.
+Until then, clone locally and use the judge path below.
+
 License: [MIT](LICENSE)
 
-> Open **Explore demo home** on the landing page (no Auth0 required) to use the
-> Indianapolis house: ranked needs with inspection page citations, then a
-> sample Ask answer with evidence.
+> **Judge path (no signup):** open **Explore demo home** → **Ask HouseIQ** →
+> **Run live memory query** (CockroachDB vector) → **Memory Auditor** →
+> **Run live MCP audit**. Both live buttons ignore whatever you type; the
+> questions are hardcoded on the server.
 
 ## Hackathon Technologies
 
@@ -42,7 +47,7 @@ home-scoped `SELECT`s.
 
 Example:
 
-> Show me everything HouseIQ currently knows about the HVAC system and where that knowledge came from.
+> What evidence supports what HouseIQ believes about the furnace?
 
 The MCP tool trace is stored on `agent_runs` (`run_kind = memory_audit`).
 
@@ -50,8 +55,17 @@ The MCP tool trace is stored on `agent_runs` (`run_kind = memory_audit`).
 
 Original inspections, invoices, warranties, manuals, and photos are stored
 in a private S3 bucket. HouseIQ cites those files; it does not replace them
-with model output. Failed S3 uploads do not complete ingestion. See
-[`DOCS/PRODUCTION.md`](DOCS/PRODUCTION.md).
+with model output. Failed S3 uploads do not complete ingestion.
+
+### AWS ECS/Fargate (Express Mode)
+
+HouseIQ's agent API runs on AWS ECS/Fargate, source documents are stored in
+Amazon S3, and persistent agent memory lives in CockroachDB Cloud.
+
+The backend image is `backend/Dockerfile` → Amazon ECR → Amazon ECS
+Express Mode. The frontend stays where it is. See
+[`DOCS/PRODUCTION.md`](DOCS/PRODUCTION.md) for env vars, health checks, CORS,
+and the task-role vs access-key note.
 
 ### Why CockroachDB Matters
 
@@ -125,7 +139,7 @@ memory. CockroachDB is.
 See the diagram in [`DOCS/ARCHITECTURE.md`](DOCS/ARCHITECTURE.md).
 
 - **Frontend** — React + Vite
-- **Backend** — Express (Node.js)
+- **Backend** — Express (Node.js) on Amazon ECS Express Mode (Fargate)
 - **Database** — CockroachDB Cloud (distributed vector index on `memories`)
 - **MCP** — CockroachDB Cloud Managed MCP (Memory Auditor)
 - **Auth** — Auth0 (Authorization Code + PKCE on the frontend, JWT bearer
@@ -137,7 +151,7 @@ See the diagram in [`DOCS/ARCHITECTURE.md`](DOCS/ARCHITECTURE.md).
 ## Running locally
 
 ```bash
-git clone <this-repo-url>
+git clone https://github.com/kylebabington/HouseIQ.git
 cd HouseIQ
 
 cp backend/.env.example backend/.env
@@ -172,6 +186,7 @@ to see the Ranch without signing in.
 | `AUTH0_DOMAIN` | Your Auth0 tenant domain, e.g. `your-tenant.us.auth0.com`. Used to validate incoming JWTs. |
 | `AUTH0_AUDIENCE` | The Identifier of the HouseIQ API registered in Auth0. Must match `VITE_AUTH0_AUDIENCE` on the frontend. |
 | `FRONTEND_URL` | Origin allowed by CORS, e.g. `http://localhost:5173`. |
+| `PUBLIC_DEMO_HOME_ID` | UUID of the Indianapolis home shown by Explore demo home. |
 | `OPENAI_API_KEY` | OpenAI API key used for chat completions and embeddings. |
 | `OPENAI_CHAT_MODEL` | Chat model name, e.g. `gpt-4o-mini`. |
 | `AWS_REGION` | AWS region for the S3 bucket, e.g. `us-east-2`. |
@@ -190,7 +205,7 @@ to see the Ranch without signing in.
 | `VITE_AUTH0_DOMAIN` | Your Auth0 tenant domain. |
 | `VITE_AUTH0_CLIENT_ID` | The Client ID of the Auth0 Single-Page Application. |
 | `VITE_AUTH0_AUDIENCE` | Must exactly match `AUTH0_AUDIENCE` on the backend. |
-| `VITE_API_URL` | Base URL of the backend API, e.g. `http://localhost:5000/api`. |
+| `VITE_API_URL` | Base URL of the backend API, e.g. `http://localhost:5000/api` locally or the ECS Express Mode URL plus `/api` in production. |
 
 ## Household sharing notes
 
@@ -208,8 +223,9 @@ to see the Ranch without signing in.
 A ready-to-use Postman collection (with automatic Auth0 token handling) lives in
 [`postman/`](postman/). See [`postman/README.md`](postman/README.md) for setup.
 
-Public demo: `GET /api/demo/home`. Authenticated extras include
-`GET /homes/:homeId/needs`, `GET /homes/:homeId/passport`,
+Public demo: `GET /api/demo/home`. Live judge buttons (no login):
+`POST /api/demo/live/ask` and `POST /api/demo/live/audit`. Authenticated
+extras include `GET /homes/:homeId/needs`, `GET /homes/:homeId/passport`,
 `GET /homes/:homeId/agent-runs`, `POST /homes/:homeId/memory-audit`,
 and `/homes/:homeId/members`.
 
@@ -219,5 +235,13 @@ Cockroach MCP smoke check (requires `.env` keys):
 cd backend && npm run mcp:smoke
 ```
 
-Failure behavior is documented in [`DOCS/PRODUCTION.md`](DOCS/PRODUCTION.md).
+Populate the Indianapolis demo home from the 15-year batch (API must be
+running; caller must own `PUBLIC_DEMO_HOME_ID`):
+
+```bash
+cd backend && npm run demo:seed-history
+```
+
+Failure behavior and the ECS/Fargate + S3 + CockroachDB production shape
+are documented in [`DOCS/PRODUCTION.md`](DOCS/PRODUCTION.md).
 The 15-year upload script for judges is [`DOCS/DEMO.md`](DOCS/DEMO.md).

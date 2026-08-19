@@ -129,8 +129,9 @@ export function extractSystemKey(value) {
         text.includes("air conditioner") ||
         text.includes("capacitor") ||
         text.includes("refrigerant") ||
-        /\bac\b/.test(text) ||
-        text.includes("hvac")
+        text.includes("condenser") ||
+        text.includes("outdoor unit") ||
+        /\bac\b/.test(text)
     ) {
         return "ac";
     }

@@ -11,11 +11,14 @@ import {
   formatCurrency,
   formatDate,
   formatLabel,
+  formatSimilarity,
   formatYear,
   homeSubtitle,
+  memorySourceLabel,
 } from "../../utils/formatters.js";
 
 import AdviceHistoryPanel from "../agent/AdviceHistoryPanel.jsx";
+import McpToolTrace from "../agent/McpToolTrace.jsx";
 import DocumentsPanel from "../dashboard/DocumentsPanel.jsx";
 import OverviewPanel from "../dashboard/OverviewPanel.jsx";
 import TimelinePanel from "../dashboard/TimelinePanel.jsx";
@@ -28,6 +31,12 @@ import {
   RECORD_TABS,
   locationForLegacyTab,
 } from "../../navigation.js";
+
+const JUDGE_ASK_QUESTION =
+  "What major expenses should I prepare for over the next three years?";
+
+const JUDGE_AUDIT_QUESTION =
+  "What evidence supports what HouseIQ believes about the furnace?";
 
 function normalizeQuestion(value) {
   return String(value || "")
@@ -151,8 +160,9 @@ function VerificationBadge({ value }) {
  *
  * Important cost boundary:
  * - one GET loads the complete sanitized demo snapshot;
- * - tabs, suggested questions, and answer replay are local state only;
- * - anonymous visitors never call the OpenAI-backed /ask route.
+ * - tabs and saved-answer replay are local state;
+ * - live Vector Ask and MCP audit use the public hardcoded
+ *   endpoints (no Auth0).
  */
 export default function DemoExplore({
   onBack,
@@ -169,6 +179,13 @@ export default function DemoExplore({
   const [demoTurns, setDemoTurns] = useState([]);
   const [askMessage, setAskMessage] = useState("");
   const [highlightRecord, setHighlightRecord] = useState(null);
+  const [liveAsk, setLiveAsk] = useState(null);
+  const [liveAskError, setLiveAskError] = useState("");
+  const [liveAskLoading, setLiveAskLoading] = useState(false);
+  const [liveAudit, setLiveAudit] = useState(null);
+  const [liveAuditError, setLiveAuditError] = useState("");
+  const [liveAuditLoading, setLiveAuditLoading] =
+    useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,6 +332,107 @@ export default function DemoExplore({
     }
 
     appendDemoTurn(match);
+  }
+
+  async function postLiveDemo(path) {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const error = new Error(
+        body.error ||
+          "HouseIQ could not run the live demo request."
+      );
+      error.status = response.status;
+      throw error;
+    }
+
+    return body;
+  }
+
+  async function runLiveAsk() {
+    setLiveAskLoading(true);
+    setLiveAskError("");
+
+    try {
+      const data = await postLiveDemo("/demo/live/ask");
+      setLiveAsk(data);
+    } catch (error) {
+      setLiveAsk(null);
+      setLiveAskError(
+        error.status === 429
+          ? "Too many live demo runs. Please try again in a few minutes."
+          : error.message
+      );
+    } finally {
+      setLiveAskLoading(false);
+    }
+  }
+
+  async function runLiveAudit() {
+    setLiveAuditLoading(true);
+    setLiveAuditError("");
+
+    try {
+      const data = await postLiveDemo("/demo/live/audit");
+      setLiveAudit(data);
+    } catch (error) {
+      setLiveAudit(null);
+      setLiveAuditError(
+        error.status === 429
+          ? "Too many live demo runs. Please try again in a few minutes."
+          : error.message
+      );
+    } finally {
+      setLiveAuditLoading(false);
+    }
+  }
+
+  function renderLiveMemoryInspector(memoriesUsed) {
+    if (!Array.isArray(memoriesUsed) || memoriesUsed.length === 0) {
+      return null;
+    }
+
+    return (
+      <details className="memory-inspector" open>
+        <summary>
+          Why HouseIQ knows this
+        </summary>
+        <p className="muted">
+          Relevant memories used — retrieved from
+          CockroachDB vector search, not invented by
+          the model.
+        </p>
+        <ol className="memory-inspector-list">
+          {memoriesUsed.map((memory) => {
+            const similarity = formatSimilarity(
+              memory.similarity
+            );
+
+            return (
+              <li key={memory.id || memory.title}>
+                <strong>
+                  {memory.title || "Memory"}
+                </strong>
+                <p className="muted">
+                  Source: {memorySourceLabel(memory)}
+                  {similarity
+                    ? ` · Similarity: ${similarity}`
+                    : ""}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
+    );
   }
 
   function applyLocation(location) {
@@ -841,11 +959,66 @@ export default function DemoExplore({
           openOnMobile
         >
           <p>
-            These answers were generated previously against
-            this demo home. You can ask a suggested question,
-            then follow up using other saved answers. This
-            replay never calls OpenAI.
+            Replay saved answers, or run the live CockroachDB
+            vector query judges use — no signup required.
+            The live question is fixed on the server.
           </p>
+
+          <div className="demo-cta-buttons">
+            <button
+              type="button"
+              onClick={runLiveAsk}
+              disabled={liveAskLoading}
+            >
+              {liveAskLoading
+                ? "Querying live memory…"
+                : "Run live memory query"}
+            </button>
+          </div>
+          <p className="muted">
+            {JUDGE_ASK_QUESTION}
+          </p>
+
+          {liveAskError ? (
+            <div className="error-message" role="alert">
+              <strong>Live memory query</strong>
+              <p>{liveAskError}</p>
+            </div>
+          ) : null}
+
+          {liveAsk ? (
+            <div className="turn-list">
+              <div className="turn-item">
+                <div className="turn-question">
+                  <span className="turn-question-label">
+                    You
+                  </span>
+                  <p>{liveAsk.question}</p>
+                </div>
+                <div className="turn-response">
+                  <div className="turn-response-header">
+                    <span className="turn-response-label">
+                      HouseIQ
+                    </span>
+                    <span>
+                      {formatLabel(
+                        liveAsk.confidence || "medium"
+                      )} confidence
+                      {liveAsk.via
+                        ? ` · ${liveAsk.via}`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="answer-box">
+                    {liveAsk.answer}
+                  </div>
+                  {renderLiveMemoryInspector(
+                    liveAsk.memoriesUsed
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {demoTurns.length > 0 ? (
             <div className="agent-chat-toolbar">
@@ -1060,11 +1233,42 @@ export default function DemoExplore({
           </div>
 
           <p className="memory-auditor-copy">
-            Live Memory Auditor queries run through
-            CockroachDB Cloud Managed MCP and require a
-            signed-in account. This public demo can only
-            replay audits already saved on the house.
+            Run the live CockroachDB Cloud Managed MCP
+            audit — no signup required. The furnace question
+            is fixed on the server. Saved audits below are
+            a replay of earlier runs.
           </p>
+
+          <div className="demo-cta-buttons">
+            <button
+              type="button"
+              onClick={runLiveAudit}
+              disabled={liveAuditLoading}
+            >
+              {liveAuditLoading
+                ? "Querying MCP…"
+                : "Run live MCP audit"}
+            </button>
+          </div>
+          <p className="muted">
+            {JUDGE_AUDIT_QUESTION}
+          </p>
+
+          {liveAuditError ? (
+            <div className="error-message" role="alert">
+              <strong>Live MCP audit</strong>
+              <p>{liveAuditError}</p>
+            </div>
+          ) : null}
+
+          {liveAudit ? (
+            <div className="memory-auditor-result">
+              <div className="answer-box">
+                {liveAudit.answer}
+              </div>
+              <McpToolTrace result={liveAudit} />
+            </div>
+          ) : null}
 
           {auditRuns.length > 0 ? (
             <AdviceHistoryPanel
