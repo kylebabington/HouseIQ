@@ -281,4 +281,66 @@ describe("entity resolution", () => {
         expect(decision.action).toBe("link");
         expect(decision.match.id).toBe("a-ac");
     });
+
+    test("generic HVAC filenames do not classify as AC", () => {
+        expect(
+            extractSystemKey(
+                "2025-10-08_E2025-01_inspection_hvac_annual_inspection.txt"
+            )
+        ).toBeNull();
+    });
+
+    test("HVAC annual inspection of the furnace attaches to the furnace", () => {
+        const decision = resolveCandidate(
+            "asset",
+            {
+                assetType: "hvac",
+                name: "Annual HVAC inspection",
+                notes: "Furnace operating normally",
+            },
+            [
+                {
+                    id: "a-furnace",
+                    asset_type: "furnace",
+                    name: "High-efficiency furnace",
+                    notes: "Carrier 96% installed 2014",
+                },
+            ],
+            {
+                fileName:
+                    "38__2025-10-08_E2025-01_inspection_hvac_annual_inspection.txt",
+            }
+        );
+
+        expect(decision.action).toBe("link");
+        expect(decision.match.id).toBe("a-furnace");
+    });
+
+    test("outdoor condenser and later refrigerant AC stay one asset", () => {
+        const decision = resolveCandidate(
+            "asset",
+            {
+                assetType: "HVAC System",
+                name: "Air Conditioner",
+                notes: "18-year-old system with refrigerant leak issues.",
+            },
+            [
+                {
+                    id: "a-ac",
+                    asset_type: "Air Conditioner",
+                    name: "Outdoor Unit",
+                    brand: "Northstar Parts",
+                    model: "NS45-5",
+                    notes: "Approximately 16 years old, capacitor replaced on 2018-07-18.",
+                },
+            ],
+            {
+                fileName:
+                    "29__2020-07-22_E2020-04_invoice_air_conditioner_refrigerant_leak_service.pdf",
+            }
+        );
+
+        expect(decision.action).toBe("link");
+        expect(decision.match.id).toBe("a-ac");
+    });
 });

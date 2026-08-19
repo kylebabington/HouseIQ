@@ -4,6 +4,12 @@ Use the Indianapolis demo house. Do not seed fake issues. Upload
 the documents in [`DOCS/HouseIQ_Starter_Upload_Batch_36/`](../DOCS/HouseIQ_Starter_Upload_Batch_36/)
 in `upload_order` from `starter_upload_batch_36.csv`.
 
+From `backend/` with the API running and an owner token:
+
+```bash
+npm run demo:seed-history
+```
+
 The batch is a longitudinal record, not one inspection plus one
 invoice. Later HVAC documents must attach to the furnace and air
 conditioner the house already knows.
@@ -60,3 +66,17 @@ AIR CONDITIONER
 
 The 2026 video upload is also at
 [`DOCS/SAMPLE HVAC REPAIR INVOICE.txt`](../DOCS/SAMPLE HVAC REPAIR INVOICE.txt).
+
+## Video (~3 minutes)
+
+Record only after the live Vector and MCP buttons work on the
+deployed demo:
+
+1. Homes forget — Indianapolis paperwork pile.
+2. One furnace and one AC across 15 years.
+3. Vector Ask: *What major expenses should I prepare for over the next three years?* Open **Why HouseIQ knows this**.
+4. MCP `select_query` trace on Memory Auditor.
+5. Propose / verify / remember.
+6. Architecture: ECS/Fargate + S3 + CockroachDB.
+7. Close: *The model isn’t HouseIQ’s memory. CockroachDB is.*
+

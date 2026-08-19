@@ -487,7 +487,7 @@ export function createAgentRouter() {
                             AS source_file_name,
                         documents.document_type
                             AS source_document_type,
-                        documents.document_date
+                        documents.metadata->>'documentDate'
                             AS source_document_date,
                         memories.embedding <=> $2::VECTOR(1536)
                             AS similarity_distance

@@ -58,10 +58,7 @@ export function fillMcpToolArgs(toolName, args, config) {
     // cluster_id again makes Cloud MCP reject the call.
     delete next.cluster_id;
 
-    if (
-        TOOLS_THAT_NEED_DATABASE.has(toolName) &&
-        !next.database
-    ) {
+    if (TOOLS_THAT_NEED_DATABASE.has(toolName)) {
         next.database = config?.database || "houseiq";
     }
 

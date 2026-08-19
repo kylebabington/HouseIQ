@@ -23,6 +23,16 @@ function skipInTestEnvironment() {
     return process.env.NODE_ENV === "test";
 }
 
+function isDemoSeedRequest(req) {
+    const token = (process.env.DEMO_SEED_TOKEN || "").trim();
+
+    if (!token) {
+        return false;
+    }
+
+    return req.get("X-HouseIQ-Seed-Token") === token;
+}
+
 // ---------------------------------------------------------
 // ASK RATE LIMIT
 // ---------------------------------------------------------
@@ -62,7 +72,8 @@ export const uploadRateLimit = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: keyByAuthenticatedUserOrIp,
-    skip: skipInTestEnvironment,
+    skip: (req) =>
+        skipInTestEnvironment() || isDemoSeedRequest(req),
     message: {
         error:
             "Too many documents uploaded. Please try again in a few minutes.",
@@ -87,5 +98,25 @@ export const demoReadRateLimit = rateLimit({
     message: {
         error:
             "Too many demo requests. Please try again in a few minutes.",
+    },
+});
+
+// ---------------------------------------------------------
+// PUBLIC JUDGE LIVE RATE LIMIT
+// ---------------------------------------------------------
+//
+// Anonymous Vector Ask and MCP audit. Each click costs OpenAI
+// plus Cockroach work. Keep this much tighter than signed-in Ask.
+export const demoLiveRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => ipKeyGenerator(req.ip),
+    skip: skipInTestEnvironment,
+    store: createOptionalStore(),
+    message: {
+        error:
+            "Too many live demo runs. Please try again in a few minutes.",
     },
 });

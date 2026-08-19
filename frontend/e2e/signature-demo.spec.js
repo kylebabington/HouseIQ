@@ -34,6 +34,11 @@ test.describe("HouseIQ public demo", () => {
         name: /Ask HouseIQ — Ask about repairs/i,
       })
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: /Run live memory query/i,
+      })
+    ).toBeVisible();
     await page
       .getByRole("navigation", { name: "House pages" })
       .getByRole("button", { name: "Memory Auditor" })
@@ -41,6 +46,11 @@ test.describe("HouseIQ public demo", () => {
     await expect(
       page.getByRole("heading", {
         name: /Memory Auditor \(CockroachDB MCP\)/i,
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: /Run live MCP audit/i,
       })
     ).toBeVisible();
   });
